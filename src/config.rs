@@ -1,4 +1,6 @@
 use anyhow::{Context, Result, anyhow};
+#[cfg(target_os = "windows")]
+use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -26,17 +28,21 @@ pub struct ConfigFile {
 }
 
 pub fn config_dir() -> PathBuf {
-    home_dir().join(".codea")
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(project_dirs) = ProjectDirs::from("com", "twolivesleft", "codea") {
+            return project_dirs.config_dir().to_path_buf();
+        }
+    }
+
+    env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".codea")
 }
 
 pub fn config_file() -> PathBuf {
     config_dir().join("config.json")
-}
-
-fn home_dir() -> PathBuf {
-    env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 pub fn load_config_file() -> Result<ConfigFile> {

@@ -8,6 +8,7 @@ name = "codea"
 path = "src/main.rs"
 
 [dependencies]
+directories = "5"
 anyhow = "1"
 base64 = "0.22"
 clap = { version = "4.5", features = ["derive"] }
