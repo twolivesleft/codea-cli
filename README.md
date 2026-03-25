@@ -2,6 +2,8 @@
 
 `codea-cli` is a command line tool for working with [Codea](https://codea.io/) runtimes over MCP.
 
+Agent-facing workflow guidance lives in [SKILL.md](/Users/sim/Developer/Open/codea-cli/SKILL.md).
+
 ## What It Does
 
 The `codea` binary can:

@@ -443,6 +443,10 @@ fn status_command(profile: &str) -> Result<()> {
             let project_state = state.get("state").and_then(Value::as_str).unwrap_or("none");
             let project_name = state.get("project").and_then(Value::as_str);
             let local_path = state.get("localPath").and_then(Value::as_str);
+            let project_storage = state
+                .get("projectStorage")
+                .and_then(Value::as_str)
+                .unwrap_or("collections");
             let idle_disabled = state
                 .get("idleTimerDisabled")
                 .and_then(Value::as_bool)
@@ -468,6 +472,7 @@ fn status_command(profile: &str) -> Result<()> {
             if let Some(local_path) = local_path {
                 println!("Local path: {local_path}");
             }
+            println!("Project storage: {project_storage}");
             println!(
                 "Idle timer: {}",
                 if idle_disabled {
