@@ -53,6 +53,15 @@ enum Commands {
     New(NewArgs),
     Rename(RenameArgs),
     Move(MoveArgs),
+    Delete(DeleteArgs),
+    Collections(CollectionsCommand),
+    Templates(TemplatesCommand),
+    Deps(DepsCommand),
+    Autocomplete(AutocompleteArgs),
+    Runtime(RuntimeArgs),
+    Doc(DocArgs),
+    #[command(name = "search-doc")]
+    SearchDoc(SearchDocArgs),
 }
 
 #[derive(Args, Debug)]
@@ -182,6 +191,134 @@ struct MoveArgs {
     profile: String,
 }
 
+#[derive(Args, Debug)]
+struct DeleteArgs {
+    project: String,
+    #[arg(long, default_value = "default")]
+    profile: String,
+}
+
+#[derive(Subcommand, Debug)]
+enum CollectionsSubcommand {
+    Ls(ProfileArg),
+    New(CollectionNameArgs),
+    Delete(CollectionNameArgs),
+}
+
+#[derive(Args, Debug)]
+struct CollectionsCommand {
+    #[command(subcommand)]
+    command: CollectionsSubcommand,
+}
+
+#[derive(Args, Debug)]
+struct CollectionNameArgs {
+    name: String,
+    #[arg(long, default_value = "default")]
+    profile: String,
+}
+
+#[derive(Subcommand, Debug)]
+enum TemplatesSubcommand {
+    Ls(ProfileArg),
+    Add(TemplateAddArgs),
+    Remove(TemplateRemoveArgs),
+}
+
+#[derive(Args, Debug)]
+struct TemplatesCommand {
+    #[command(subcommand)]
+    command: TemplatesSubcommand,
+}
+
+#[derive(Args, Debug)]
+struct TemplateAddArgs {
+    project: String,
+    #[arg(long)]
+    name: Option<String>,
+    #[arg(long, default_value = "default")]
+    profile: String,
+}
+
+#[derive(Args, Debug)]
+struct TemplateRemoveArgs {
+    name: String,
+    #[arg(long, default_value = "default")]
+    profile: String,
+}
+
+#[derive(Subcommand, Debug)]
+enum DepsSubcommand {
+    Ls(ProjectOnlyArgs),
+    Available(ProjectOnlyArgs),
+    Add(DependencyArgs),
+    Remove(DependencyArgs),
+}
+
+#[derive(Args, Debug)]
+struct DepsCommand {
+    #[command(subcommand)]
+    command: DepsSubcommand,
+}
+
+#[derive(Args, Debug)]
+struct ProjectOnlyArgs {
+    project: String,
+    #[arg(long, default_value = "default")]
+    profile: String,
+}
+
+#[derive(Args, Debug)]
+struct DependencyArgs {
+    project: String,
+    dependency: String,
+    #[arg(long, default_value = "default")]
+    profile: String,
+}
+
+#[derive(Args, Debug)]
+struct AutocompleteArgs {
+    project: String,
+    code: String,
+    #[arg(long, default_value = "default")]
+    profile: String,
+}
+
+#[derive(Args, Debug)]
+struct RuntimeArgs {
+    project: String,
+    #[arg(value_name = "type")]
+    runtime_type: Option<String>,
+    #[arg(long, default_value = "default")]
+    profile: String,
+}
+
+#[derive(Args, Debug)]
+struct DocArgs {
+    function_name: String,
+    #[arg(long, action = ArgAction::SetTrue)]
+    legacy: bool,
+    #[arg(long, action = ArgAction::SetTrue)]
+    modern: bool,
+    #[arg(long)]
+    project: Option<String>,
+    #[arg(long, default_value = "default")]
+    profile: String,
+}
+
+#[derive(Args, Debug)]
+struct SearchDocArgs {
+    query: String,
+    #[arg(long, action = ArgAction::SetTrue)]
+    legacy: bool,
+    #[arg(long, action = ArgAction::SetTrue)]
+    modern: bool,
+    #[arg(long)]
+    project: Option<String>,
+    #[arg(long, default_value = "default")]
+    profile: String,
+}
+
 fn main() {
     if let Err(error) = run() {
         eprintln!("Error: {error}");
@@ -212,6 +349,14 @@ fn run() -> Result<()> {
         Commands::New(args) => new_command(args, cli.wait),
         Commands::Rename(args) => rename_command(args, cli.wait),
         Commands::Move(args) => move_command(args, cli.wait),
+        Commands::Delete(args) => delete_command(args, cli.wait),
+        Commands::Collections(args) => collections_command(args, cli.wait),
+        Commands::Templates(args) => templates_command(args, cli.wait),
+        Commands::Deps(args) => deps_command(args, cli.wait),
+        Commands::Autocomplete(args) => autocomplete_command(args, cli.wait),
+        Commands::Runtime(args) => runtime_command(args, cli.wait),
+        Commands::Doc(args) => doc_command(args, cli.wait),
+        Commands::SearchDoc(args) => search_doc_command(args, cli.wait),
     }
 }
 
@@ -662,6 +807,295 @@ fn move_command(args: MoveArgs, wait: bool) -> Result<()> {
     Ok(())
 }
 
+fn delete_command(args: DeleteArgs, wait: bool) -> Result<()> {
+    let mut client = client_for_profile(&args.profile, wait)?;
+    let pname = project_name(&args.project);
+    if !prompt_confirm(&format!("Delete '{pname}'? This cannot be undone."))? {
+        return Ok(());
+    }
+    println!(
+        "{}",
+        MCPClient::text(&client.call_tool("deleteProject", json!({"path": args.project}))?)
+    );
+    Ok(())
+}
+
+fn collections_command(args: CollectionsCommand, wait: bool) -> Result<()> {
+    match args.command {
+        CollectionsSubcommand::Ls(args) => collections_ls_command(&args.profile, wait),
+        CollectionsSubcommand::New(args) => collections_new_command(args, wait),
+        CollectionsSubcommand::Delete(args) => collections_delete_command(args, wait),
+    }
+}
+
+fn collections_ls_command(profile: &str, wait: bool) -> Result<()> {
+    let mut client = client_for_profile(profile, wait)?;
+    for name in client.list_collections()? {
+        println!("{name}");
+    }
+    Ok(())
+}
+
+fn collections_new_command(args: CollectionNameArgs, wait: bool) -> Result<()> {
+    let mut client = client_for_profile(&args.profile, wait)?;
+    println!("{}", client.create_collection(&args.name)?);
+    Ok(())
+}
+
+fn collections_delete_command(args: CollectionNameArgs, wait: bool) -> Result<()> {
+    let mut client = client_for_profile(&args.profile, wait)?;
+    if !prompt_confirm(&format!(
+        "Delete collection '{}'? This cannot be undone.",
+        args.name
+    ))? {
+        return Ok(());
+    }
+    println!("{}", client.delete_collection(&args.name)?);
+    Ok(())
+}
+
+fn templates_command(args: TemplatesCommand, wait: bool) -> Result<()> {
+    match args.command {
+        TemplatesSubcommand::Ls(args) => templates_ls_command(&args.profile, wait),
+        TemplatesSubcommand::Add(args) => templates_add_command(args, wait),
+        TemplatesSubcommand::Remove(args) => templates_remove_command(args, wait),
+    }
+}
+
+fn templates_ls_command(profile: &str, wait: bool) -> Result<()> {
+    let mut client = client_for_profile(profile, wait)?;
+    for entry in client.list_templates()? {
+        println!("{entry}");
+    }
+    Ok(())
+}
+
+fn templates_add_command(args: TemplateAddArgs, wait: bool) -> Result<()> {
+    let mut client = client_for_profile(&args.profile, wait)?;
+    println!(
+        "{}",
+        client.add_template(&args.project, args.name.as_deref())?
+    );
+    Ok(())
+}
+
+fn templates_remove_command(args: TemplateRemoveArgs, wait: bool) -> Result<()> {
+    let mut client = client_for_profile(&args.profile, wait)?;
+    if !prompt_confirm(&format!(
+        "Remove template '{}'? This cannot be undone.",
+        args.name
+    ))? {
+        return Ok(());
+    }
+    println!("{}", client.remove_template(&args.name)?);
+    Ok(())
+}
+
+fn deps_command(args: DepsCommand, wait: bool) -> Result<()> {
+    match args.command {
+        DepsSubcommand::Ls(args) => deps_ls_command(args, wait),
+        DepsSubcommand::Available(args) => deps_available_command(args, wait),
+        DepsSubcommand::Add(args) => deps_add_command(args, wait),
+        DepsSubcommand::Remove(args) => deps_remove_command(args, wait),
+    }
+}
+
+fn deps_ls_command(args: ProjectOnlyArgs, wait: bool) -> Result<()> {
+    let mut client = client_for_profile(&args.profile, wait)?;
+    for dep in client.list_dependencies(&args.project)? {
+        println!("{dep}");
+    }
+    Ok(())
+}
+
+fn deps_available_command(args: ProjectOnlyArgs, wait: bool) -> Result<()> {
+    let mut client = client_for_profile(&args.profile, wait)?;
+    for dep in client.list_available_dependencies(&args.project)? {
+        println!("{dep}");
+    }
+    Ok(())
+}
+
+fn deps_add_command(args: DependencyArgs, wait: bool) -> Result<()> {
+    let mut client = client_for_profile(&args.profile, wait)?;
+    println!(
+        "{}",
+        client.add_dependency(&args.project, &args.dependency)?
+    );
+    Ok(())
+}
+
+fn deps_remove_command(args: DependencyArgs, wait: bool) -> Result<()> {
+    let mut client = client_for_profile(&args.profile, wait)?;
+    println!(
+        "{}",
+        client.remove_dependency(&args.project, &args.dependency)?
+    );
+    Ok(())
+}
+
+fn autocomplete_command(args: AutocompleteArgs, wait: bool) -> Result<()> {
+    let mut client = client_for_profile(&args.profile, wait)?;
+    let result = client.get_completions(&args.project, &args.code)?;
+    let items = result
+        .get("items")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if items.is_empty() {
+        println!("(no completions)");
+        return Ok(());
+    }
+
+    for item in items {
+        let label = item.get("label").and_then(Value::as_str).unwrap_or("");
+        if let Some(kind_name) = item
+            .get("kind")
+            .and_then(Value::as_i64)
+            .and_then(completion_kind_name)
+        {
+            println!("{label} ({kind_name})");
+        } else {
+            println!("{label}");
+        }
+    }
+    Ok(())
+}
+
+fn runtime_command(args: RuntimeArgs, wait: bool) -> Result<()> {
+    let mut client = client_for_profile(&args.profile, wait)?;
+    if let Some(runtime_type) = args.runtime_type {
+        if runtime_type != "legacy" && runtime_type != "modern" {
+            bail!("Runtime type must be 'legacy' or 'modern'.");
+        }
+        println!("{}", client.set_runtime(&args.project, &runtime_type)?);
+    } else {
+        println!("{}", client.get_runtime(&args.project)?);
+    }
+    Ok(())
+}
+
+fn doc_command(args: DocArgs, wait: bool) -> Result<()> {
+    let filter_runtime = resolve_runtime_filter(args.legacy, args.modern)?;
+    let mut client = client_for_profile(&args.profile, wait)?;
+    let filter_runtime = match (&args.project, filter_runtime) {
+        (Some(project), None) => Some(client.get_runtime(project)?),
+        (_, filter_runtime) => filter_runtime,
+    };
+
+    let result = client.get_function_help(&args.function_name)?;
+    let mut modern = result.get("modern").cloned();
+    let mut legacy = result.get("legacy").cloned();
+
+    match filter_runtime.as_deref() {
+        Some("modern") => legacy = None,
+        Some("legacy") => modern = None,
+        _ => {}
+    }
+
+    if modern.is_none() && legacy.is_none() {
+        if let Some(filter_runtime) = filter_runtime {
+            bail!(
+                "No {} documentation found for '{}'.",
+                filter_runtime,
+                args.function_name
+            );
+        }
+        bail!("No documentation found for '{}'.", args.function_name);
+    }
+
+    let name = result
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or(&args.function_name);
+    println!("{name}");
+    println!("{}", "=".repeat(name.len()));
+    println!();
+
+    match (modern.as_ref(), legacy.as_ref()) {
+        (Some(modern), Some(legacy)) => {
+            print_doc_section(Some("Modern"), modern);
+            print_doc_section(Some("Legacy"), legacy);
+        }
+        (Some(modern), None) => print_doc_section(None, modern),
+        (None, Some(legacy)) => print_doc_section(None, legacy),
+        (None, None) => {}
+    }
+
+    let see_also = result
+        .get("seeAlso")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if !see_also.is_empty() {
+        println!("See also: {}", see_also.join(", "));
+    }
+    Ok(())
+}
+
+fn search_doc_command(args: SearchDocArgs, wait: bool) -> Result<()> {
+    let filter_runtime = resolve_runtime_filter(args.legacy, args.modern)?;
+    let mut client = client_for_profile(&args.profile, wait)?;
+    let filter_runtime = match (&args.project, filter_runtime) {
+        (Some(project), None) => Some(client.get_runtime(project)?),
+        (_, filter_runtime) => filter_runtime,
+    };
+
+    let mut results = client
+        .search_docs(&args.query)?
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+
+    if let Some(filter_runtime) = filter_runtime.as_deref() {
+        results.retain(|item| {
+            item.get("runtime")
+                .and_then(Value::as_str)
+                .map(|runtime| runtime == filter_runtime || runtime == "both")
+                .unwrap_or(false)
+        });
+    }
+
+    if results.is_empty() {
+        if let Some(filter_runtime) = filter_runtime {
+            println!(
+                "No {} documentation found matching '{}'.",
+                filter_runtime, args.query
+            );
+        } else {
+            println!("No documentation found matching '{}'.", args.query);
+        }
+        return Ok(());
+    }
+
+    for item in results {
+        let name = item.get("name").and_then(Value::as_str).unwrap_or("");
+        let desc = item
+            .get("description")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let runtime = item.get("runtime").and_then(Value::as_str).unwrap_or("");
+        let tag = if runtime.is_empty() {
+            String::new()
+        } else {
+            format!("[{runtime}]")
+        };
+        if desc.is_empty() {
+            println!("  {name}  {tag}");
+        } else {
+            println!("  {name}  – {desc}  {tag}");
+        }
+    }
+
+    Ok(())
+}
+
 fn resolve_project_storage(profile: &str, wait: bool) -> Result<String> {
     let Some(ProfileConfig { host, port }) = load_profile(profile)? else {
         return Ok("filesystem".to_string());
@@ -707,6 +1141,19 @@ fn parse_collection_project(
     }
 
     (name_out, collection, cloud)
+}
+
+fn resolve_runtime_filter(legacy: bool, modern: bool) -> Result<Option<String>> {
+    if legacy && modern {
+        bail!("Use only one of --legacy or --modern.");
+    }
+    if legacy {
+        Ok(Some("legacy".to_string()))
+    } else if modern {
+        Ok(Some("modern".to_string()))
+    } else {
+        Ok(None)
+    }
 }
 
 fn pull_project_files(
@@ -810,6 +1257,163 @@ fn prompt_selection(max: usize) -> Result<usize> {
     Ok(choice)
 }
 
+fn prompt_confirm(prompt: &str) -> Result<bool> {
+    print!("{prompt} [y/N]: ");
+    io::stdout().flush()?;
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let input = input.trim().to_ascii_lowercase();
+    Ok(matches!(input.as_str(), "y" | "yes"))
+}
+
+fn completion_kind_name(kind: i64) -> Option<&'static str> {
+    match kind {
+        1 => Some("text"),
+        2 => Some("method"),
+        3 => Some("function"),
+        4 => Some("constructor"),
+        5 => Some("field"),
+        6 => Some("variable"),
+        7 => Some("class"),
+        12 => Some("value"),
+        14 => Some("keyword"),
+        15 => Some("snippet"),
+        21 => Some("constant"),
+        _ => None,
+    }
+}
+
+fn print_doc_section(title: Option<&str>, doc: &Value) {
+    if let Some(title) = title {
+        println!("{title}");
+        println!("{}", "-".repeat(title.len()));
+    }
+
+    let signatures = doc
+        .get("signatures")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    let descriptions = signatures
+        .iter()
+        .filter_map(|sig| {
+            sig.get("description")
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+        })
+        .collect::<Vec<_>>();
+    let shared_desc = descriptions
+        .first()
+        .cloned()
+        .filter(|first| !first.is_empty() && descriptions.iter().all(|desc| desc == first));
+
+    if let Some(shared_desc) = shared_desc.as_deref() {
+        println!("{shared_desc}");
+        println!();
+    }
+
+    for sig in signatures {
+        let label = sig.get("label").and_then(Value::as_str).unwrap_or("");
+        println!("  {label}");
+
+        let description = sig
+            .get("description")
+            .and_then(Value::as_str)
+            .filter(|_| shared_desc.is_none());
+        if let Some(description) = description {
+            println!("    {description}");
+        }
+
+        if let Some(params) = sig.get("parameters").and_then(Value::as_array) {
+            for param in params {
+                let name = param.get("name").and_then(Value::as_str).unwrap_or("");
+                let ptype = param.get("type").and_then(Value::as_str);
+                let desc = param.get("description").and_then(Value::as_str);
+                let optional = param
+                    .get("optional")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                let mut parts = vec![format!("    {name}")];
+                if let Some(ptype) = ptype {
+                    parts.push(ptype.to_string());
+                }
+                if let Some(desc) = desc {
+                    parts.push(format!("– {desc}"));
+                } else if optional {
+                    parts.push("(optional)".to_string());
+                }
+                println!("{}", parts.join("  "));
+            }
+        }
+
+        if let Some(returns) = sig.get("returns").and_then(Value::as_array) {
+            for ret in returns {
+                let rtype = ret.get("type").and_then(Value::as_str);
+                let rdesc = ret.get("description").and_then(Value::as_str);
+                if rtype.is_some() || rdesc.is_some() {
+                    let mut parts = vec!["→".to_string()];
+                    if let Some(rtype) = rtype {
+                        parts.push(rtype.to_string());
+                    }
+                    if let Some(rdesc) = rdesc {
+                        parts.push(format!("– {rdesc}"));
+                    }
+                    println!("    {}", parts.join(" "));
+                }
+            }
+        }
+
+        println!();
+    }
+}
+
 fn project_name(path: &str) -> String {
     path.split('/').next_back().unwrap_or(path).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{completion_kind_name, parse_collection_project, resolve_runtime_filter};
+
+    #[test]
+    fn parse_collection_project_supports_icloud_prefix() {
+        let (name, collection, cloud) =
+            parse_collection_project("iCloud/Documents/Foo", None, false);
+        assert_eq!(name, "Foo");
+        assert_eq!(collection.as_deref(), Some("Documents"));
+        assert!(cloud);
+    }
+
+    #[test]
+    fn parse_collection_project_keeps_explicit_collection() {
+        let (name, collection, cloud) =
+            parse_collection_project("Foo/Bar", Some("Examples".to_string()), false);
+        assert_eq!(name, "Foo/Bar");
+        assert_eq!(collection.as_deref(), Some("Examples"));
+        assert!(!cloud);
+    }
+
+    #[test]
+    fn resolve_runtime_filter_rejects_conflict() {
+        assert!(resolve_runtime_filter(true, true).is_err());
+    }
+
+    #[test]
+    fn resolve_runtime_filter_handles_single_flag() {
+        assert_eq!(
+            resolve_runtime_filter(true, false).unwrap().as_deref(),
+            Some("legacy")
+        );
+        assert_eq!(
+            resolve_runtime_filter(false, true).unwrap().as_deref(),
+            Some("modern")
+        );
+    }
+
+    #[test]
+    fn completion_kind_name_matches_expected_values() {
+        assert_eq!(completion_kind_name(3), Some("function"));
+        assert_eq!(completion_kind_name(999), None);
+    }
 }

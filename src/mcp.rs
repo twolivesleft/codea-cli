@@ -199,6 +199,118 @@ impl MCPClient {
             .send()?;
         Ok(SseLines::new(response))
     }
+
+    pub fn list_collections(&mut self) -> Result<Vec<String>> {
+        parse_string_array(&Self::json_result(
+            &self.call_tool("listCollections", json!({}))?,
+        )?)
+    }
+
+    pub fn create_collection(&mut self, name: &str) -> Result<String> {
+        Ok(Self::text(
+            &self.call_tool("createCollection", json!({"name": name}))?,
+        ))
+    }
+
+    pub fn delete_collection(&mut self, name: &str) -> Result<String> {
+        Ok(Self::text(
+            &self.call_tool("deleteCollection", json!({"name": name}))?,
+        ))
+    }
+
+    pub fn list_templates(&mut self) -> Result<Vec<String>> {
+        parse_string_array(&Self::json_result(
+            &self.call_tool("listTemplates", json!({}))?,
+        )?)
+    }
+
+    pub fn add_template(&mut self, project_path: &str, name: Option<&str>) -> Result<String> {
+        let mut arguments = serde_json::Map::new();
+        arguments.insert("path".to_string(), json!(project_path));
+        if let Some(name) = name {
+            arguments.insert("name".to_string(), json!(name));
+        }
+        Ok(Self::text(
+            &self.call_tool("addTemplate", Value::Object(arguments))?,
+        ))
+    }
+
+    pub fn remove_template(&mut self, name: &str) -> Result<String> {
+        Ok(Self::text(
+            &self.call_tool("removeTemplate", json!({"name": name}))?,
+        ))
+    }
+
+    pub fn list_available_dependencies(&mut self, project_path: &str) -> Result<Vec<String>> {
+        parse_string_array(&Self::json_result(
+            &self.call_tool("listAvailableDependencies", json!({"path": project_path}))?,
+        )?)
+    }
+
+    pub fn add_dependency(&mut self, project_path: &str, dependency: &str) -> Result<String> {
+        Ok(Self::text(&self.call_tool(
+            "addDependency",
+            json!({"path": project_path, "dependency": dependency}),
+        )?))
+    }
+
+    pub fn remove_dependency(&mut self, project_path: &str, dependency: &str) -> Result<String> {
+        Ok(Self::text(&self.call_tool(
+            "removeDependency",
+            json!({"path": project_path, "dependency": dependency}),
+        )?))
+    }
+
+    pub fn get_completions(&mut self, project_path: &str, code: &str) -> Result<Value> {
+        Self::json_result(&self.call_tool(
+            "getCompletions",
+            json!({"path": project_path, "code": code}),
+        )?)
+    }
+
+    pub fn get_runtime(&mut self, project_path: &str) -> Result<String> {
+        Ok(Self::text(
+            &self.call_tool("getRuntime", json!({"path": project_path}))?,
+        ))
+    }
+
+    pub fn set_runtime(&mut self, project_path: &str, runtime: &str) -> Result<String> {
+        Ok(Self::text(&self.call_tool(
+            "setRuntime",
+            json!({"path": project_path, "runtime": runtime}),
+        )?))
+    }
+
+    pub fn get_function_help(&mut self, function_name: &str) -> Result<Value> {
+        Self::json_result(
+            &self.call_tool("getFunctionHelp", json!({"functionName": function_name}))?,
+        )
+    }
+
+    pub fn search_docs(&mut self, query: &str) -> Result<Value> {
+        Self::json_result(&self.call_tool("searchDocs", json!({"query": query}))?)
+    }
+
+    #[allow(dead_code)]
+    pub fn find_in_files(
+        &mut self,
+        project_path: &str,
+        text: &str,
+        case_sensitive: bool,
+        whole_word: bool,
+        is_regex: bool,
+    ) -> Result<Value> {
+        Self::json_result(&self.call_tool(
+            "findInFiles",
+            json!({
+                "path": project_path,
+                "text": text,
+                "caseSensitive": case_sensitive,
+                "wholeWord": whole_word,
+                "isRegex": is_regex
+            }),
+        )?)
+    }
 }
 
 struct SseLines {
@@ -262,5 +374,20 @@ pub fn maybe_base64_text(bytes: &[u8]) -> String {
     match std::str::from_utf8(bytes) {
         Ok(text) => text.to_string(),
         Err(_) => general_purpose::STANDARD.encode(bytes),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::maybe_base64_text;
+
+    #[test]
+    fn maybe_base64_text_keeps_utf8() {
+        assert_eq!(maybe_base64_text("hello".as_bytes()), "hello");
+    }
+
+    #[test]
+    fn maybe_base64_text_encodes_binary() {
+        assert_eq!(maybe_base64_text(&[0xff, 0x00, 0x01]), "/wAB");
     }
 }

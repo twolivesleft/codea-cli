@@ -1,4 +1,5 @@
 use anyhow::Result;
+use flume::RecvTimeoutError;
 use mdns_sd::{ServiceDaemon, ServiceEvent};
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
@@ -41,7 +42,8 @@ pub fn discover_devices(timeout: Duration) -> Result<Vec<Device>> {
                 }
             }
             Ok(_) => {}
-            Err(_) => break,
+            Err(RecvTimeoutError::Timeout) => continue,
+            Err(RecvTimeoutError::Disconnected) => break,
         }
     }
 

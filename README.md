@@ -9,8 +9,11 @@ The `codea` binary can:
 - discover running Codea / Carbide hosts on the local network
 - save and switch connection profiles
 - inspect runtime status
+- manage projects, collections, templates, and dependencies
 - run, stop, and restart projects
 - execute Lua in the running runtime
+- inspect and change project runtime type
+- query API docs and autocomplete data
 - capture screenshots
 - stream logs
 - pull and push project files
@@ -81,6 +84,12 @@ Capture a screenshot:
 codea screenshot
 ```
 
+Show the full command surface:
+
+```bash
+codea --help
+```
+
 ## Connection Model
 
 The CLI stores profiles in:
@@ -104,12 +113,25 @@ Environment variables override stored config:
 
 For local project creation, only the `Modern` template is supported.
 
+## Command Surface
+
+The Rust rewrite now includes the same top-level CLI commands as the Python tool:
+
+- `discover`, `configure`, `status`
+- `ls`, `new`, `rename`, `move`, `delete`
+- `pull`, `push`
+- `run`, `stop`, `restart`, `pause`, `resume`, `paused`, `exec`
+- `screenshot`, `idle-timer`, `logs`, `clear-logs`
+- `collections ls|new|delete`
+- `templates ls|add|remove`
+- `deps ls|available|add|remove`
+- `autocomplete`, `runtime`, `doc`, `search-doc`
+
 ## Current State
 
-This is an early rewrite. The core command surface is implemented and the crate builds successfully, but it still needs:
+The rewrite has reached command-surface parity with the Python CLI. Remaining work is primarily:
 
-- fuller end-to-end testing against live Codea / Carbide hosts
-- parity verification against the Python tool
+- end-to-end integration coverage against live Codea / Carbide hosts
 - packaging and release automation
 
 ## Development
