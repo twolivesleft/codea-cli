@@ -5,13 +5,13 @@ description: Control Codea on a connected iOS, iPadOS, or macOS device. Use this
 
 # Codea Skill
 
-This repository contains the Rust `codea` CLI. This skill explains how an agent should use that CLI effectively.
+This directory contains the `codea` CLI tool for working with Codea projects on a connected iOS, iPadOS, or macOS device.
 
 The most important distinction is the target type:
 
-- `projectStorage = filesystem`
+- `Project storage = filesystem`
   Use the local filesystem workflow. This is the macOS Codea / Carbide case. Edit files directly on disk and `run` the project by path. Do not use `pull` / `push` unless you specifically need them for some other reason.
-- `projectStorage = collections`
+- `Project storage = collections`
   Use the repository workflow. This is the iOS / iPadOS Codea case. Pull projects from the device, edit locally, then push changes back.
 
 ## Setup
@@ -47,12 +47,19 @@ If `codea` is not on `PATH`, use `./target/debug/codea ...`.
 
 ## Determine The Target Type
 
-Before choosing a workflow, query the current target state and check `projectStorage`.
+Before choosing a workflow, query the current target state and check `Project storage`.
 
-- If `projectStorage` is `filesystem`, the target is a local macOS app and projects live directly on disk.
-- If `projectStorage` is `collections`, the target is using Codea's project repository model and projects should be accessed through `pull` / `push`.
+```bash
+codea status
+```
 
-Also pay attention to `localPath` when present. That indicates the currently running project path on filesystem-backed targets.
+- If `Project storage` is `filesystem`, the target is a local macOS app and projects live directly on disk.
+- If `Project storage` is `collections`, the target is using Codea's project repository model and projects should be accessed through `pull` / `push`.
+
+Also pay attention to `Project path` when present. This is the canonical running project identifier:
+
+- `Examples/Flappy` or `iCloud/Documents/Foo` for collection-backed targets
+- `/path/to/MyGame.codea` for filesystem-backed targets
 
 ## Project Naming
 
@@ -246,14 +253,29 @@ codea --wait run /path/to/MyGame.codea
 | Command | Description |
 |---------|-------------|
 | `codea autocomplete <project> <code>` | Get completions for a Lua prefix |
-| `codea doc <function>` | Show API docs |
+| `codea doc <function>` | Show API docs for the current runtime context; defaults to the running project's runtime, otherwise `modern` |
+| `codea doc <function> --all` | Show both modern and legacy docs |
 | `codea doc <function> --modern` | Show modern docs only |
 | `codea doc <function> --legacy` | Show legacy docs only |
-| `codea doc <function> --project <name>` | Filter docs by project runtime |
-| `codea search-doc <query>` | Search docs |
+| `codea doc <function> --project <name-or-path>` | Filter docs by that project's runtime |
+| `codea doc <function> --project` | Filter docs by the currently running project's runtime |
+| `codea search-doc <query>` | Search docs for the current runtime context; defaults to the running project's runtime, otherwise `modern` |
+| `codea search-doc <query> --all` | Search both modern and legacy docs |
 | `codea search-doc <query> --modern` | Search modern docs only |
 | `codea search-doc <query> --legacy` | Search legacy docs only |
-| `codea search-doc <query> --project <name>` | Search docs using project runtime |
+| `codea search-doc <query> --project <name-or-path>` | Search docs using that project's runtime |
+| `codea search-doc <query> --project` | Search docs using the currently running project's runtime |
+
+When `--all` is given, `doc` and `search-doc` return both modern and legacy entries.
+
+When no runtime flags are given, `doc` and `search-doc` resolve runtime in this order:
+
+1. `--project <name-or-path>`
+2. bare `--project` using the currently running project
+3. the currently running project's runtime automatically
+4. `modern` if no project is running
+
+On filesystem-backed macOS targets, runtime should be treated as `modern`.
 
 ## Pull / Push Details
 

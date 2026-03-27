@@ -110,8 +110,8 @@ Environment variables override stored config:
 `codea new` is target-aware:
 
 - if no host is configured, it creates a local filesystem project
-- if the connected host reports `projectStorage == "filesystem"`, it creates a local filesystem project. These hosts are typically iPad or iPhones running Codea
-- if the connected host reports `projectStorage == "collections"`, it creates the project remotely via MCP. These hosts are the macOS Carbide.app or Codea.app
+- if the connected host reports `projectStorage == "filesystem"`, it creates a local filesystem project. These hosts are typically the macOS Carbide.app or Codea.app
+- if the connected host reports `projectStorage == "collections"`, it creates the project remotely via MCP. These hosts are typically iPhone or iPad devices running Codea
 
 For local project creation, only the `Modern` template is supported.
 
