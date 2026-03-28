@@ -3,7 +3,7 @@ mod discover;
 mod local;
 mod mcp;
 
-use anyhow::{Result, bail};
+use anyhow::{Result, anyhow, bail};
 use clap::{ArgAction, Args, Parser, Subcommand};
 use config::{DEFAULT_PORT, ProfileConfig};
 use serde_json::{Value, json};
@@ -296,11 +296,13 @@ struct RuntimeArgs {
 #[derive(Args, Debug)]
 struct DocArgs {
     function_name: String,
+    #[arg(long, action = ArgAction::SetTrue, conflicts_with_all = ["legacy", "modern", "project"])]
+    all: bool,
     #[arg(long, action = ArgAction::SetTrue)]
     legacy: bool,
     #[arg(long, action = ArgAction::SetTrue)]
     modern: bool,
-    #[arg(long)]
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
     project: Option<String>,
     #[arg(long, default_value = "default")]
     profile: String,
@@ -309,11 +311,13 @@ struct DocArgs {
 #[derive(Args, Debug)]
 struct SearchDocArgs {
     query: String,
+    #[arg(long, action = ArgAction::SetTrue, conflicts_with_all = ["legacy", "modern", "project"])]
+    all: bool,
     #[arg(long, action = ArgAction::SetTrue)]
     legacy: bool,
     #[arg(long, action = ArgAction::SetTrue)]
     modern: bool,
-    #[arg(long)]
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
     project: Option<String>,
     #[arg(long, default_value = "default")]
     profile: String,
@@ -442,7 +446,12 @@ fn status_command(profile: &str) -> Result<()> {
             println!();
             let project_state = state.get("state").and_then(Value::as_str).unwrap_or("none");
             let project_name = state.get("project").and_then(Value::as_str);
-            let local_path = state.get("localPath").and_then(Value::as_str);
+            let project_path = state.get("projectPath").and_then(Value::as_str);
+            let project_storage = state
+                .get("projectStorage")
+                .and_then(Value::as_str)
+                .unwrap_or("collections");
+            let runtime = state.get("runtime").and_then(Value::as_str);
             let idle_disabled = state
                 .get("idleTimerDisabled")
                 .and_then(Value::as_bool)
@@ -453,7 +462,9 @@ fn status_command(profile: &str) -> Result<()> {
                 .unwrap_or(false);
 
             if project_state == "running" {
-                let mut label = if let Some(project_name) = project_name {
+                let mut label = if let Some(project_path) = project_path {
+                    format!("Running: {project_path}")
+                } else if let Some(project_name) = project_name {
                     format!("Running: {project_name}")
                 } else {
                     "Running".to_string()
@@ -465,8 +476,12 @@ fn status_command(profile: &str) -> Result<()> {
             } else {
                 println!("State:   No project running");
             }
-            if let Some(local_path) = local_path {
-                println!("Local path: {local_path}");
+            if let Some(project_path) = project_path {
+                println!("Project path: {project_path}");
+            }
+            println!("Project storage: {project_storage}");
+            if let Some(runtime) = runtime {
+                println!("Runtime: {runtime}");
             }
             println!(
                 "Idle timer: {}",
@@ -976,12 +991,14 @@ fn runtime_command(args: RuntimeArgs, wait: bool) -> Result<()> {
 }
 
 fn doc_command(args: DocArgs, wait: bool) -> Result<()> {
-    let filter_runtime = resolve_runtime_filter(args.legacy, args.modern)?;
     let mut client = client_for_profile(&args.profile, wait)?;
-    let filter_runtime = match (&args.project, filter_runtime) {
-        (Some(project), None) => Some(client.get_runtime(project)?),
-        (_, filter_runtime) => filter_runtime,
-    };
+    let filter_runtime = resolve_doc_runtime_filter(
+        &mut client,
+        args.all,
+        args.legacy,
+        args.modern,
+        args.project.as_deref(),
+    )?;
 
     let result = client.get_function_help(&args.function_name)?;
     let mut modern = result.get("modern").cloned();
@@ -1040,12 +1057,14 @@ fn doc_command(args: DocArgs, wait: bool) -> Result<()> {
 }
 
 fn search_doc_command(args: SearchDocArgs, wait: bool) -> Result<()> {
-    let filter_runtime = resolve_runtime_filter(args.legacy, args.modern)?;
     let mut client = client_for_profile(&args.profile, wait)?;
-    let filter_runtime = match (&args.project, filter_runtime) {
-        (Some(project), None) => Some(client.get_runtime(project)?),
-        (_, filter_runtime) => filter_runtime,
-    };
+    let filter_runtime = resolve_doc_runtime_filter(
+        &mut client,
+        args.all,
+        args.legacy,
+        args.modern,
+        args.project.as_deref(),
+    )?;
 
     let mut results = client
         .search_docs(&args.query)?
@@ -1154,6 +1173,57 @@ fn resolve_runtime_filter(legacy: bool, modern: bool) -> Result<Option<String>> 
     } else {
         Ok(None)
     }
+}
+
+fn resolve_doc_runtime_filter(
+    client: &mut MCPClient,
+    all: bool,
+    legacy: bool,
+    modern: bool,
+    project: Option<&str>,
+) -> Result<Option<String>> {
+    if all {
+        return Ok(None);
+    }
+
+    if let Some(filter_runtime) = resolve_runtime_filter(legacy, modern)? {
+        return Ok(Some(filter_runtime));
+    }
+
+    if let Some(project) = project {
+        if project.is_empty() {
+            let state = client.get_device_state()?;
+            if state.get("state").and_then(Value::as_str) != Some("running") {
+                bail!("No project is currently running.");
+            }
+            if let Some(runtime) = state.get("runtime").and_then(Value::as_str) {
+                return Ok(Some(runtime.to_string()));
+            }
+            let project_path = state
+                .get("projectPath")
+                .and_then(Value::as_str)
+                .or_else(|| state.get("project").and_then(Value::as_str))
+                .ok_or_else(|| anyhow!("No project is currently running."))?;
+            return Ok(Some(client.get_runtime(project_path)?));
+        }
+        return Ok(Some(client.get_runtime(project)?));
+    }
+
+    let state = client.get_device_state()?;
+    if state.get("state").and_then(Value::as_str) == Some("running") {
+        if let Some(runtime) = state.get("runtime").and_then(Value::as_str) {
+            return Ok(Some(runtime.to_string()));
+        }
+        if let Some(project_path) = state
+            .get("projectPath")
+            .and_then(Value::as_str)
+            .or_else(|| state.get("project").and_then(Value::as_str))
+        {
+            return Ok(Some(client.get_runtime(project_path)?));
+        }
+    }
+
+    Ok(Some("modern".to_string()))
 }
 
 fn pull_project_files(

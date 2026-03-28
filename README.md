@@ -2,6 +2,8 @@
 
 `codea-cli` is a command line tool for working with [Codea](https://codea.io/) runtimes over MCP.
 
+Agent-facing workflow guidance lives in [SKILL.md](/Users/sim/Developer/Open/codea-cli/SKILL.md).
+
 ## What It Does
 
 The `codea` binary can:
@@ -108,8 +110,8 @@ Environment variables override stored config:
 `codea new` is target-aware:
 
 - if no host is configured, it creates a local filesystem project
-- if the connected host reports `projectStorage == "filesystem"`, it creates a local filesystem project. These hosts are typically iPad or iPhones running Codea
-- if the connected host reports `projectStorage == "collections"`, it creates the project remotely via MCP. These hosts are the macOS Carbide.app or Codea.app
+- if the connected host reports `projectStorage == "filesystem"`, it creates a local filesystem project. These hosts are typically the macOS Carbide.app or Codea.app
+- if the connected host reports `projectStorage == "collections"`, it creates the project remotely via MCP. These hosts are typically iPhone or iPad devices running Codea
 
 For local project creation, only the `Modern` template is supported.
 
