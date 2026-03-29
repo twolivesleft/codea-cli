@@ -56,6 +56,12 @@ Homebrew will be the primary install path for macOS, Linux, and WSL:
 brew install twolivesleft/tap/codea
 ```
 
+Windows users can either run the PowerShell installer or install the MSI from the latest GitHub release:
+
+```powershell
+powershell -c "irm https://github.com/twolivesleft/codea-cli/releases/latest/download/codea-cli-installer.ps1 | iex"
+```
+
 Until the first public release is published, build locally with Cargo:
 
 ```bash
@@ -192,8 +198,8 @@ To publish a release:
 
 ```bash
 # Update Cargo.toml version first, then:
-git tag v0.1.3
-git push origin v0.1.3
+git tag v0.1.4
+git push origin v0.1.4
 ```
 
 The generated [release workflow](/Users/sim/Developer/Open/codea-cli/.github/workflows/release.yml) will:

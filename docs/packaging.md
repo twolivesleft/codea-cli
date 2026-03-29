@@ -92,7 +92,7 @@ Implementation shape:
 Current repo setup:
 
 - `dist-workspace.toml` is configured with:
-  - `installers = ["homebrew"]`
+  - `installers = ["homebrew", "powershell", "msi"]`
   - `tap = "twolivesleft/homebrew-tap"`
   - `formula = "codea"`
 - `.github/workflows/release.yml` is generated and includes a `publish-homebrew-formula` job
@@ -264,12 +264,12 @@ curl --proto '=https' --tlsv1.2 -LsSf https://github.com/twolivesleft/codea-cli/
 Windows PowerShell:
 
 ```powershell
-powershell -c "irm https://github.com/twolivesleft/codea-cli/releases/latest/download/codea-installer.ps1 | iex"
+powershell -c "irm https://github.com/twolivesleft/codea-cli/releases/latest/download/codea-cli-installer.ps1 | iex"
 ```
 
 Windows native installer:
 
-- download the latest `codea-<version>-x86_64-pc-windows-msvc.msi`
+- download the latest `codea-cli-x86_64-pc-windows-msvc.msi`
 
 ## Open Decisions
 

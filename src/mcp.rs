@@ -58,7 +58,7 @@ impl MCPClient {
             "params": {
                 "protocolVersion": PROTOCOL_VERSION,
                 "capabilities": {},
-                "clientInfo": {"name": "codea", "version": "0.1.3"}
+                "clientInfo": {"name": "codea", "version": "0.1.4"}
             }
         });
         let _ = self.post_json(&payload)?;
