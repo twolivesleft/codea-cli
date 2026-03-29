@@ -36,6 +36,12 @@ codea discover
 codea configure --host 192.168.1.42 --port 18513
 ```
 
+Clear a saved device profile when you want to go back to local-only behavior:
+
+```bash
+codea configure --clear
+```
+
 Or use environment variables:
 
 ```bash
@@ -152,11 +158,13 @@ cat /tmp/codea.log
 
 - On filesystem-backed targets it creates a local project on disk.
 - On collection-backed targets it creates a project in the target repository.
+- If a saved device is unreachable, `codea new` falls back to local creation after a short probe unless `--wait` is set.
 
 Examples:
 
 ```bash
 codea new "My Game"
+codea new "My Game" --local
 codea new "My Game" --folder
 codea new "My Game" --template Modern
 codea new "Documents/My Game"
@@ -167,6 +175,12 @@ After creation:
 
 - On filesystem-backed targets, edit the created directory directly and `run` it by path.
 - On collection-backed targets, `pull` it locally, edit, `push`, then `run`.
+
+Use these overrides when needed:
+
+- `codea new --local` forces local creation without probing the configured device.
+- `codea --wait new ...` keeps waiting for the configured device instead of falling back.
+- `codea configure --clear` forgets the saved device configuration.
 
 ## Global Flag: `--wait`
 
@@ -188,7 +202,7 @@ codea --wait run /path/to/MyGame.codea
 | Command | Description |
 |---------|-------------|
 | `codea discover` | Scan the local network for Codea devices and save config |
-| `codea configure` | Manually set device host/port |
+| `codea configure` | Manually set device host/port, or `--clear` the saved profile |
 | `codea status` | Show current device config and live state |
 
 ### Collections
@@ -202,7 +216,7 @@ codea --wait run /path/to/MyGame.codea
 | Command | Description |
 |---------|-------------|
 | `codea ls` | List all projects as `Collection/Project` |
-| `codea new <name>` | Create a new project; local or remote depending on `projectStorage` |
+| `codea new <name>` | Create a new project; local or remote depending on `projectStorage`, with `--local` to force local creation |
 | `codea rename <project> <newname>` | Rename a project |
 | `codea move <project> <collection>` | Move a project |
 | `codea delete <project>` | Delete a project |

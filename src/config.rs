@@ -90,6 +90,28 @@ pub fn save_profile(profile: &str, host: &str, port: u16) -> Result<()> {
     Ok(())
 }
 
+pub fn clear_profile(profile: &str) -> Result<bool> {
+    let path = config_file();
+    if !path.exists() {
+        return Ok(false);
+    }
+
+    let mut config = load_config_file()?;
+    let removed = config.profiles.remove(profile).is_some();
+    if !removed {
+        return Ok(false);
+    }
+
+    if config.profiles.is_empty() {
+        fs::remove_file(&path).with_context(|| format!("Failed to remove {}", path.display()))?;
+    } else {
+        let text = serde_json::to_string_pretty(&config)?;
+        fs::write(&path, text).with_context(|| format!("Failed to write {}", path.display()))?;
+    }
+
+    Ok(true)
+}
+
 pub fn require_profile(profile: &str) -> Result<ProfileConfig> {
     load_profile(profile)?.ok_or_else(|| {
         anyhow!(

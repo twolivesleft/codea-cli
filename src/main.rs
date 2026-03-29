@@ -12,7 +12,9 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use crate::config::{load_profile, require_profile, resolve_status_source, save_profile};
+use crate::config::{
+    clear_profile, load_profile, require_profile, resolve_status_source, save_profile,
+};
 use crate::discover::discover_devices;
 use crate::local::create_local_project;
 use crate::mcp::{MCPClient, maybe_base64_text};
@@ -80,10 +82,12 @@ struct DiscoverArgs {
 
 #[derive(Args, Debug)]
 struct ConfigureArgs {
-    #[arg(long)]
-    host: String,
+    #[arg(long, conflicts_with = "clear")]
+    host: Option<String>,
     #[arg(long, default_value_t = DEFAULT_PORT)]
     port: u16,
+    #[arg(long, action = ArgAction::SetTrue, conflicts_with = "host")]
+    clear: bool,
     #[arg(long, default_value = "default")]
     profile: String,
 }
@@ -163,6 +167,8 @@ struct LogsArgs {
 #[derive(Args, Debug)]
 struct NewArgs {
     name: String,
+    #[arg(long, action = ArgAction::SetTrue)]
+    local: bool,
     #[arg(long)]
     collection: Option<String>,
     #[arg(long, action = ArgAction::SetTrue)]
@@ -422,10 +428,22 @@ fn discover_command(args: DiscoverArgs) -> Result<()> {
 }
 
 fn configure_command(args: ConfigureArgs) -> Result<()> {
-    save_profile(&args.profile, &args.host, args.port)?;
+    if args.clear {
+        if clear_profile(&args.profile)? {
+            println!("Cleared profile '{}'.", args.profile);
+        } else {
+            println!("Profile '{}' was not configured.", args.profile);
+        }
+        return Ok(());
+    }
+
+    let host = args
+        .host
+        .ok_or_else(|| anyhow!("--host is required unless --clear is specified."))?;
+    save_profile(&args.profile, &host, args.port)?;
     println!(
         "Saved {}:{} as profile '{}'.",
-        args.host, args.port, args.profile
+        host, args.port, args.profile
     );
     Ok(())
 }
@@ -752,7 +770,7 @@ fn clear_logs_command(profile: &str, wait: bool) -> Result<()> {
 }
 
 fn new_command(args: NewArgs, wait: bool) -> Result<()> {
-    let project_storage = resolve_project_storage(&args.profile, wait)?;
+    let project_storage = resolve_new_project_storage(&args, wait)?;
     if project_storage == "filesystem" {
         if args.collection.is_some() {
             bail!("--collection is only supported for collection-backed targets.");
@@ -1131,6 +1149,36 @@ fn resolve_project_storage(profile: &str, wait: bool) -> Result<String> {
             .unwrap_or("collections")
             .to_string()),
         Err(_) => Ok("filesystem".to_string()),
+    }
+}
+
+fn resolve_new_project_storage(args: &NewArgs, wait: bool) -> Result<String> {
+    if args.local {
+        return Ok("filesystem".to_string());
+    }
+
+    let Some(ProfileConfig { host, port }) = load_profile(&args.profile)? else {
+        return Ok("filesystem".to_string());
+    };
+
+    if wait {
+        wait_for_device(&host, port)?;
+        return resolve_project_storage(&args.profile, true);
+    }
+
+    match MCPClient::new(&host, port, 3).and_then(|mut client| client.get_device_state()) {
+        Ok(state) => Ok(state
+            .get("projectStorage")
+            .and_then(Value::as_str)
+            .unwrap_or("collections")
+            .to_string()),
+        Err(_) => {
+            eprintln!(
+                "Configured device {}:{} was unreachable. Creating local project instead.\nUse --wait to keep trying, --local to force local creation, or 'codea configure --clear --profile {}' to forget this device.",
+                host, port, args.profile
+            );
+            Ok("filesystem".to_string())
+        }
     }
 }
 

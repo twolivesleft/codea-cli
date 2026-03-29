@@ -83,6 +83,12 @@ Create a new local project:
 codea new MyGame
 ```
 
+Force local creation without probing the configured device:
+
+```bash
+codea new MyGame --local
+```
+
 Create a plain folder project instead of a `.codea` bundle:
 
 ```bash
@@ -120,6 +126,12 @@ Environment variables override stored config:
 - `CODEA_HOST`
 - `CODEA_PORT`
 
+Clear a saved profile:
+
+```bash
+codea configure --clear
+```
+
 ## Local vs Remote Project Creation
 
 `codea new` is target-aware:
@@ -127,6 +139,13 @@ Environment variables override stored config:
 - if no host is configured, it creates a local filesystem project
 - if the connected host reports `projectStorage == "filesystem"`, it creates a local filesystem project. These hosts are typically the macOS Carbide.app or Codea.app
 - if the connected host reports `projectStorage == "collections"`, it creates the project remotely via MCP. These hosts are typically iPhone or iPad devices running Codea
+- if a configured device is unreachable, `codea new` now falls back to local creation after a short probe and prints a warning
+
+Use these overrides when you want explicit behavior:
+
+- `codea new --local` forces local filesystem creation without probing a device
+- `codea --wait new ...` keeps waiting for the configured device instead of falling back
+- `codea configure --clear` forgets the saved device profile
 
 For local project creation, only the `Modern` template is supported.
 
@@ -170,8 +189,8 @@ To publish a release:
 
 ```bash
 # Update Cargo.toml version first, then:
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 The generated [release workflow](/Users/sim/Developer/Open/codea-cli/.github/workflows/release.yml) will:
