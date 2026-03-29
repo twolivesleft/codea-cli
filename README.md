@@ -48,6 +48,21 @@ cargo build --release
 codea --help
 ```
 
+## Install
+
+Homebrew will be the primary install path for macOS, Linux, and WSL:
+
+```bash
+brew install twolivesleft/tap/codea
+```
+
+Until the first public release is published, build locally with Cargo:
+
+```bash
+cargo build --release
+./target/release/codea --help
+```
+
 ## Quick Start
 
 Discover a running Codea host:
@@ -135,6 +150,36 @@ The rewrite has reached command-surface parity with the Python CLI. Remaining wo
 
 - end-to-end integration coverage against live Codea / Carbide hosts
 - packaging and release automation
+
+Packaging strategy notes now live in [docs/packaging.md](/Users/sim/Developer/Open/codea-cli/docs/packaging.md).
+
+## Release
+
+Homebrew publishing is automated through GitHub Actions and a separate tap repo:
+
+- release repo: `twolivesleft/codea-cli`
+- tap repo: `twolivesleft/homebrew-tap`
+
+Current release setup expects:
+
+- a GitHub App installed on `twolivesleft/homebrew-tap`
+- `HOMEBREW_APP_ID` configured as a repository variable in `twolivesleft/codea-cli`
+- `HOMEBREW_APP_PRIVATE_KEY` configured as a repository secret in `twolivesleft/codea-cli`
+
+To publish a release:
+
+```bash
+# Update Cargo.toml version first, then:
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The generated [release workflow](/Users/sim/Developer/Open/codea-cli/.github/workflows/release.yml) will:
+
+- build release archives for the configured targets
+- create the GitHub release
+- generate the Homebrew formula
+- push `Formula/codea.rb` to `twolivesleft/homebrew-tap`
 
 ## Development
 

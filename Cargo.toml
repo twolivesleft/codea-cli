@@ -2,6 +2,11 @@
 name = "codea-cli"
 version = "0.1.0"
 edition = "2024"
+description = "CLI for working with Codea runtimes over MCP"
+repository = "https://github.com/twolivesleft/codea-cli"
+homepage = "https://github.com/twolivesleft/codea-cli"
+authors = ["Sim Saens <simeon@twolivesleft.com>"]
+license = "MIT OR Apache-2.0"
 
 [[bin]]
 name = "codea"
@@ -18,3 +23,8 @@ plist = "1.7"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
