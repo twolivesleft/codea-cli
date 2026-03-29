@@ -13,7 +13,15 @@ pub struct Device {
     pub port: u16,
 }
 
-pub fn discover_devices(timeout: Duration) -> Result<Vec<Device>> {
+#[derive(Debug, Clone, Copy)]
+pub enum DiscoverEvent {
+    Resolved,
+}
+
+pub fn discover_devices_with_progress<F>(timeout: Duration, mut on_event: F) -> Result<Vec<Device>>
+where
+    F: FnMut(DiscoverEvent),
+{
     let mdns = ServiceDaemon::new()?;
     let receiver = mdns.browse(SERVICE_TYPE)?;
     let deadline = Instant::now() + timeout;
@@ -33,11 +41,13 @@ pub fn discover_devices(timeout: Duration) -> Result<Vec<Device>> {
                         .iter()
                         .any(|d: &Device| d.host == host && d.port == info.get_port())
                     {
-                        devices.push(Device {
+                        let device = Device {
                             name,
                             host,
                             port: info.get_port(),
-                        });
+                        };
+                        on_event(DiscoverEvent::Resolved);
+                        devices.push(device);
                     }
                 }
             }

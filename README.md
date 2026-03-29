@@ -189,8 +189,8 @@ To publish a release:
 
 ```bash
 # Update Cargo.toml version first, then:
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.1.2
+git push origin v0.1.2
 ```
 
 The generated [release workflow](/Users/sim/Developer/Open/codea-cli/.github/workflows/release.yml) will:

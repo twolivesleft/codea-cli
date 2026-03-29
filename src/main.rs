@@ -11,11 +11,12 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+use std::{sync::mpsc, thread};
 
 use crate::config::{
     clear_profile, load_profile, require_profile, resolve_status_source, save_profile,
 };
-use crate::discover::discover_devices;
+use crate::discover::{DiscoverEvent, discover_devices_with_progress};
 use crate::local::create_local_project;
 use crate::mcp::{MCPClient, maybe_base64_text};
 
@@ -396,8 +397,53 @@ fn wait_for_device(host: &str, port: u16) -> Result<()> {
 }
 
 fn discover_command(args: DiscoverArgs) -> Result<()> {
-    println!("Scanning for Codea devices ({:.0}s)...", args.timeout);
-    let devices = discover_devices(Duration::from_secs_f64(args.timeout))?;
+    let timeout = Duration::from_secs_f64(args.timeout);
+    let start = Instant::now();
+    let (tx, rx) = mpsc::channel::<DiscoverEvent>();
+
+    let spinner = thread::spawn(move || {
+        const FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+        let mut frame = 0usize;
+        let mut discovered = 0usize;
+        let mut stderr = io::stderr();
+
+        loop {
+            match rx.recv_timeout(Duration::from_millis(100)) {
+                Ok(DiscoverEvent::Resolved) => {
+                    discovered += 1;
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+
+            let elapsed = start.elapsed().min(timeout).as_secs_f64();
+            let suffix = if discovered == 0 {
+                String::new()
+            } else if discovered == 1 {
+                "  1 device found".to_string()
+            } else {
+                format!("  {} devices found", discovered)
+            };
+            let _ = write!(
+                stderr,
+                "\r{} Scanning for Codea devices... {:.1}s{}",
+                FRAMES[frame], elapsed, suffix
+            );
+            let _ = stderr.flush();
+            frame = (frame + 1) % FRAMES.len();
+        }
+
+        let clear_len = 72usize;
+        let _ = write!(stderr, "\r{:<width$}\r", "", width = clear_len);
+        let _ = stderr.flush();
+    });
+
+    let devices = discover_devices_with_progress(timeout, |event| {
+        let _ = tx.send(event);
+    })?;
+    drop(tx);
+    let _ = spinner.join();
+
     if devices.is_empty() {
         println!("No devices found. Make sure Codea Air Code server is running on your device.");
         return Ok(());
