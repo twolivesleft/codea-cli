@@ -49,6 +49,8 @@ export CODEA_HOST=192.168.1.42
 export CODEA_PORT=18513
 ```
 
+The CLI also performs a cached once-per-day update check by default. Set `CODEA_NO_UPDATE_CHECK=1` to disable it.
+
 If `codea` is not on `PATH`, use `./target/debug/codea ...`.
 
 ## Determine The Target Type

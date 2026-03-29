@@ -6,15 +6,18 @@ mod mcp;
 use anyhow::{Result, anyhow, bail};
 use clap::{ArgAction, Args, Parser, Subcommand};
 use config::{DEFAULT_PORT, ProfileConfig};
+use reqwest::blocking::Client;
 use serde_json::{Value, json};
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+use std::{env, time::SystemTime};
 use std::{sync::mpsc, thread};
 
 use crate::config::{
-    clear_profile, load_profile, require_profile, resolve_status_source, save_profile,
+    clear_profile, load_profile, load_update_check, require_profile, resolve_status_source,
+    save_profile, save_update_check,
 };
 use crate::discover::{DiscoverEvent, discover_devices_with_progress};
 use crate::local::create_local_project;
@@ -339,7 +342,7 @@ fn main() {
 
 fn run() -> Result<()> {
     let cli = Cli::parse();
-    match cli.command {
+    let result = match cli.command {
         Commands::Discover(args) => discover_command(args),
         Commands::Configure(args) => configure_command(args),
         Commands::Status(args) => status_command(&args.profile),
@@ -368,7 +371,13 @@ fn run() -> Result<()> {
         Commands::Runtime(args) => runtime_command(args, cli.wait),
         Commands::Doc(args) => doc_command(args, cli.wait),
         Commands::SearchDoc(args) => search_doc_command(args, cli.wait),
+    };
+
+    if result.is_ok() {
+        maybe_notify_about_update();
     }
+
+    result
 }
 
 fn client_for_profile(profile: &str, wait: bool) -> Result<MCPClient> {
@@ -1254,6 +1263,96 @@ fn parse_collection_project(
     }
 
     (name_out, collection, cloud)
+}
+
+fn maybe_notify_about_update() {
+    if env::var_os("CODEA_NO_UPDATE_CHECK").is_some() {
+        return;
+    }
+
+    let Ok(mut update_check) = load_update_check() else {
+        return;
+    };
+
+    let now = unix_timestamp_now();
+    if let Some(last_checked_at) = update_check.last_checked_at {
+        if now.saturating_sub(last_checked_at) < 60 * 60 * 24 {
+            return;
+        }
+    }
+
+    let Some(latest_version) = fetch_latest_release_version() else {
+        return;
+    };
+
+    update_check.last_checked_at = Some(now);
+
+    if version_is_newer(&latest_version, env!("CARGO_PKG_VERSION"))
+        && update_check.last_notified_version.as_deref() != Some(latest_version.as_str())
+    {
+        eprintln!();
+        eprintln!(
+            "A newer version of codea is available: {} (installed: {})",
+            latest_version,
+            env!("CARGO_PKG_VERSION")
+        );
+        if installed_via_homebrew() {
+            eprintln!("Update with: brew update && brew upgrade codea");
+        } else {
+            eprintln!("See: https://github.com/twolivesleft/codea-cli/releases/latest");
+        }
+        update_check.last_notified_version = Some(latest_version);
+    }
+
+    let _ = save_update_check(update_check);
+}
+
+fn fetch_latest_release_version() -> Option<String> {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .ok()?;
+    let response = client
+        .get("https://api.github.com/repos/twolivesleft/codea-cli/releases/latest")
+        .header("User-Agent", format!("codea/{}", env!("CARGO_PKG_VERSION")))
+        .send()
+        .ok()?;
+    let json = response.json::<Value>().ok()?;
+    let tag = json.get("tag_name")?.as_str()?;
+    Some(tag.trim_start_matches('v').to_string())
+}
+
+fn installed_via_homebrew() -> bool {
+    let Ok(exe) = env::current_exe() else {
+        return false;
+    };
+    let exe = exe.to_string_lossy();
+    exe.contains("/Cellar/")
+        || exe.contains("/Homebrew/")
+        || exe.starts_with("/opt/homebrew/")
+        || exe.starts_with("/usr/local/")
+        || exe.starts_with("/home/linuxbrew/.linuxbrew/")
+}
+
+fn version_is_newer(latest: &str, current: &str) -> bool {
+    parse_version(latest) > parse_version(current)
+}
+
+fn parse_version(version: &str) -> (u64, u64, u64) {
+    let core = version.split('-').next().unwrap_or(version);
+    let mut parts = core.split('.').filter_map(|part| part.parse::<u64>().ok());
+    (
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+    )
+}
+
+fn unix_timestamp_now() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
 }
 
 fn resolve_runtime_filter(legacy: bool, modern: bool) -> Result<Option<String>> {

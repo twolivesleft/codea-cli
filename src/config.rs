@@ -25,6 +25,16 @@ fn default_port() -> u16 {
 pub struct ConfigFile {
     #[serde(default)]
     pub profiles: BTreeMap<String, ProfileConfig>,
+    #[serde(default, rename = "updateCheck")]
+    pub update_check: Option<UpdateCheck>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UpdateCheck {
+    #[serde(default, rename = "lastCheckedAt")]
+    pub last_checked_at: Option<u64>,
+    #[serde(default, rename = "lastNotifiedVersion")]
+    pub last_notified_version: Option<String>,
 }
 
 pub fn config_dir() -> PathBuf {
@@ -85,8 +95,7 @@ pub fn save_profile(profile: &str, host: &str, port: u16) -> Result<()> {
         },
     );
 
-    let text = serde_json::to_string_pretty(&config)?;
-    fs::write(config_file(), text)?;
+    write_config_file(&config)?;
     Ok(())
 }
 
@@ -102,14 +111,33 @@ pub fn clear_profile(profile: &str) -> Result<bool> {
         return Ok(false);
     }
 
-    if config.profiles.is_empty() {
+    if config.profiles.is_empty() && config.update_check.is_none() {
         fs::remove_file(&path).with_context(|| format!("Failed to remove {}", path.display()))?;
     } else {
-        let text = serde_json::to_string_pretty(&config)?;
-        fs::write(&path, text).with_context(|| format!("Failed to write {}", path.display()))?;
+        write_config_file(&config)?;
     }
 
     Ok(true)
+}
+
+pub fn load_update_check() -> Result<UpdateCheck> {
+    Ok(load_config_file()?.update_check.unwrap_or_default())
+}
+
+pub fn save_update_check(update_check: UpdateCheck) -> Result<()> {
+    let dir = config_dir();
+    fs::create_dir_all(&dir).with_context(|| format!("Failed to create {}", dir.display()))?;
+
+    let mut config = load_config_file()?;
+    config.update_check = Some(update_check);
+    write_config_file(&config)
+}
+
+fn write_config_file(config: &ConfigFile) -> Result<()> {
+    let path = config_file();
+    let text = serde_json::to_string_pretty(config)?;
+    fs::write(&path, text).with_context(|| format!("Failed to write {}", path.display()))?;
+    Ok(())
 }
 
 pub fn require_profile(profile: &str) -> Result<ProfileConfig> {
