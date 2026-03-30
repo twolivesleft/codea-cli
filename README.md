@@ -278,6 +278,16 @@ Codea also exposes an MCP endpoint directly:
 http://<device-ip>:18513/mcp
 ```
 
+Example setup commands:
+
+```bash
+# Claude Code
+claude mcp add codea --transport http http://192.168.1.42:18513/mcp
+
+# Codex
+codex mcp add codea --url http://192.168.1.42:18513/mcp
+```
+
 Use the CLI when you want:
 
 - shell-friendly workflows
