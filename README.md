@@ -50,19 +50,19 @@ codea --help
 
 ## Install
 
-Homebrew will be the primary install path for macOS, Linux, and WSL:
+Install via Homebrew
 
 ```bash
 brew install twolivesleft/tap/codea
 ```
 
-Windows users can either run the PowerShell installer or install the MSI from the latest GitHub release:
+Windows users can either run the PowerShell installer or install the MSI from the latest GitHub release
 
 ```powershell
 powershell -c "irm https://github.com/twolivesleft/codea-cli/releases/latest/download/codea-cli-installer.ps1 | iex"
 ```
 
-Until the first public release is published, build locally with Cargo:
+Or you can build locally with Cargo
 
 ```bash
 cargo build --release
@@ -160,8 +160,6 @@ For local project creation, only the `Modern` template is supported.
 
 ## Command Surface
 
-The Rust rewrite now includes the same top-level CLI commands as the Python tool:
-
 - `discover`, `configure`, `status`
 - `ls`, `new`, `rename`, `move`, `delete`
 - `pull`, `push`
@@ -171,15 +169,6 @@ The Rust rewrite now includes the same top-level CLI commands as the Python tool
 - `templates ls|add|remove`
 - `deps ls|available|add|remove`
 - `autocomplete`, `runtime`, `doc`, `search-doc`
-
-## Current State
-
-The rewrite has reached command-surface parity with the Python CLI. Remaining work is primarily:
-
-- end-to-end integration coverage against live Codea / Carbide hosts
-- packaging and release automation
-
-Packaging strategy notes now live in [docs/packaging.md](/Users/sim/Developer/Open/codea-cli/docs/packaging.md).
 
 ## Release
 
