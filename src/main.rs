@@ -723,10 +723,14 @@ fn resume_command(profile: &str, wait: bool) -> Result<()> {
 fn paused_command(args: PausedArgs, wait: bool) -> Result<()> {
     let mut client = client_for_profile(&args.profile, wait)?;
     match args.state.as_deref() {
-        None => println!(
-            "{}",
-            MCPClient::text(&client.call_tool("getProjectPaused", json!({}))?)
-        ),
+        None => {
+            let paused = client
+                .get_device_state()?
+                .get("paused")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            println!("{}", if paused { "paused" } else { "not paused" });
+        }
         Some("on") => {
             let _ = client.execute_lua("viewer.paused = true")?;
             println!("paused");
@@ -775,10 +779,21 @@ fn screenshot_command(args: ScreenshotArgs, wait: bool) -> Result<()> {
 fn idle_timer_command(args: IdleTimerArgs, wait: bool) -> Result<()> {
     let mut client = client_for_profile(&args.profile, wait)?;
     match args.state.as_deref() {
-        None => println!(
-            "{}",
-            MCPClient::text(&client.call_tool("getIdleTimerDisabled", json!({}))?)
-        ),
+        None => {
+            let disabled = client
+                .get_device_state()?
+                .get("idleTimerDisabled")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            println!(
+                "Idle timer: {}",
+                if disabled {
+                    "off (screen stays on)"
+                } else {
+                    "on (screen may sleep)"
+                }
+            );
+        }
         Some("on") => println!(
             "{}",
             MCPClient::text(&client.call_tool("setIdleTimerDisabled", json!({"disabled": false}))?)
