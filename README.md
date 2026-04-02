@@ -36,7 +36,7 @@ Install via Homebrew
 brew install twolivesleft/tap/codea
 ```
 
-Windows users can either run the PowerShell installer or install the MSI from the latest GitHub release
+Windows users can either run the PowerShell installer or [install the MSI](https://github.com/twolivesleft/codea-cli/releases/latest/download/codea-cli-x86_64-pc-windows-msvc.msi)
 
 ```powershell
 powershell -c "irm https://github.com/twolivesleft/codea-cli/releases/latest/download/codea-cli-installer.ps1 | iex"
