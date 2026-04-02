@@ -28,28 +28,6 @@ The CLI works with both:
 - local macOS `Carbide.app` runners
 - remote iOS / iPadOS Codea runtimes that expose the same MCP surface
 
-## Build
-
-```bash
-cargo build
-```
-
-Run the debug binary directly:
-
-```bash
-./target/debug/codea --help
-```
-
-For an optimized build:
-
-```bash
-cargo build --release
-
-# The binary will be in target/release
-
-codea --help
-```
-
 ## Install
 
 Install via Homebrew
@@ -349,4 +327,18 @@ Build again after changes:
 
 ```bash
 cargo build
+```
+
+Run the debug binary directly:
+
+```bash
+./target/debug/codea --help
+```
+
+For an optimized build:
+
+```bash
+cargo build --release
+
+# The binary will be in target/release
 ```
