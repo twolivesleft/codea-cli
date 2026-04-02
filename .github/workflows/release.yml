@@ -70,6 +70,21 @@ jobs:
         with:
           name: cargo-dist-cache
           path: ~/.cargo/bin/dist
+      - name: Validate tag matches crate version
+        if: ${{ !github.event.pull_request }}
+        shell: bash
+        run: |
+          crate_version="$(sed -nE 's/^version = "(.*)"$/\1/p' Cargo.toml | head -n 1)"
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [[ -z "$crate_version" ]]; then
+            echo "Failed to read crate version from Cargo.toml" >&2
+            exit 1
+          fi
+          if [[ "$crate_version" != "$tag_version" ]]; then
+            echo "Release tag $GITHUB_REF_NAME does not match Cargo.toml version $crate_version." >&2
+            echo "Update Cargo.toml before tagging, or retag the commit with v$crate_version." >&2
+            exit 1
+          fi
       # sure would be cool if github gave us proper conditionals...
       # so here's a doubly-nested ternary-via-truthiness to try to provide the best possible
       # functionality based on whether this is a pull_request, and whether it's from a fork.

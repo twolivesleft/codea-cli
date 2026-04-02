@@ -321,10 +321,14 @@ Current release setup expects:
 To publish a release:
 
 ```bash
-# Update Cargo.toml version first, then:
-git tag v0.1.5
-git push origin v0.1.5
+# Preview what cargo-release will do:
+cargo release patch --no-publish
+
+# Perform the version bump, commit, tag, and push:
+cargo release patch --no-publish --execute
 ```
+
+Use `minor`, `major`, or an explicit version instead of `patch` as needed. `cargo-release` updates [`Cargo.toml`](/Users/sim/Developer/Open/codea-cli/Cargo.toml), creates the matching `vX.Y.Z` tag, and pushes the commit and tag so the generated [release workflow](/Users/sim/Developer/Open/codea-cli/.github/workflows/release.yml) can build and publish artifacts.
 
 The generated [release workflow](/Users/sim/Developer/Open/codea-cli/.github/workflows/release.yml) will:
 

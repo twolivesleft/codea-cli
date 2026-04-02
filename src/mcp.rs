@@ -7,6 +7,7 @@ use std::io::{BufRead, BufReader};
 use std::time::Duration;
 
 const PROTOCOL_VERSION: &str = "2024-11-05";
+const CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub struct MCPClient {
     client: Client,
@@ -58,7 +59,7 @@ impl MCPClient {
             "params": {
                 "protocolVersion": PROTOCOL_VERSION,
                 "capabilities": {},
-                "clientInfo": {"name": "codea", "version": "0.1.5"}
+                "clientInfo": {"name": "codea", "version": CLIENT_VERSION}
             }
         });
         let _ = self.post_json(&payload)?;
