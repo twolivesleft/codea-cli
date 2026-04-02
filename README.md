@@ -4,7 +4,7 @@
 
 Learn more about it [here](https://codea.io/cli)
 
-Agent-facing workflow guidance lives in [SKILL.md](./SKILL.md).
+Agent-facing workflow guidance lives in [SKILL.md](https://github.com/twolivesleft/codea-skill/blob/main/SKILL.md).
 
 ## What It Does
 
