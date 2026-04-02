@@ -4,7 +4,7 @@
 
 Learn more about it [here](https://codea.io/cli)
 
-Agent-facing workflow guidance lives in [SKILL.md](/Users/sim/Developer/Open/codea-cli/SKILL.md).
+Agent-facing workflow guidance lives in [SKILL.md](./SKILL.md).
 
 ## What It Does
 
@@ -152,7 +152,7 @@ codea logs --tail 20
 codea screenshot --output result.png
 ```
 
-For local macOS Codea or Carbide targets, the workflow is different: edit files directly on disk and run the project by path. See [SKILL.md](/Users/sim/Developer/Open/codea-cli/SKILL.md) for the full target-aware workflow.
+For local macOS Codea or Carbide targets, the workflow is different: edit files directly on disk and run the project by path. See [SKILL.md](https://github.com/twolivesleft/codea-skill/blob/main/SKILL.md) for the full target-aware workflow.
 
 ## Project Naming
 
@@ -328,9 +328,9 @@ cargo release patch --no-publish
 cargo release patch --no-publish --execute
 ```
 
-Use `minor`, `major`, or an explicit version instead of `patch` as needed. `cargo-release` updates [`Cargo.toml`](/Users/sim/Developer/Open/codea-cli/Cargo.toml), creates the matching `vX.Y.Z` tag, and pushes the commit and tag so the generated [release workflow](/Users/sim/Developer/Open/codea-cli/.github/workflows/release.yml) can build and publish artifacts.
+Use `minor`, `major`, or an explicit version instead of `patch` as needed. `cargo-release` updates [`Cargo.toml`](./Cargo.toml), creates the matching `vX.Y.Z` tag, and pushes the commit and tag so the generated [release workflow](./.github/workflows/release.yml) can build and publish artifacts.
 
-The generated [release workflow](/Users/sim/Developer/Open/codea-cli/.github/workflows/release.yml) will:
+The generated [release workflow](./.github/workflows/release.yml) will:
 
 - build release archives for the configured targets
 - create the GitHub release
