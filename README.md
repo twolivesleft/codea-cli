@@ -4,7 +4,7 @@
 
 Learn more about it [here](https://codea.io/cli)
 
-Agent-facing workflow guidance lives in [SKILL.md](https://github.com/twolivesleft/codea-skill/blob/main/SKILL.md).
+Agent-facing workflow guidance lives in [SKILL.md](./SKILL.md).
 
 ## What It Does
 
@@ -130,7 +130,7 @@ codea logs --tail 20
 codea screenshot --output result.png
 ```
 
-For local macOS Codea or Carbide targets, the workflow is different: edit files directly on disk and run the project by path. See [SKILL.md](https://github.com/twolivesleft/codea-skill/blob/main/SKILL.md) for the full target-aware workflow.
+For local macOS Codea or Carbide targets, the workflow is different: edit files directly on disk and run the project by path. See [SKILL.md](./SKILL.md) for the full target-aware workflow.
 
 ## Project Naming
 
