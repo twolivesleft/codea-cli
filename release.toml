@@ -1,3 +1,5 @@
+# The only home for cargo-release config: keys here are overridden by
+# [package.metadata.release] in Cargo.toml, so that section must stay absent.
 # Distribution is handled by cargo-dist from the pushed tag, not by crates.io.
 publish = false
 
