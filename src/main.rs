@@ -880,8 +880,9 @@ fn describe_screen_size(preset: &str) -> String {
 
 /// Codea reports the current screen size as `{"preset": id}`, plus `width` and
 /// `height` once the viewer has laid out. Those two are omitted rather than
-/// null before first layout, and they are the viewer's live bounds rather than
-/// the preset's nominal size, so under `match-display` they follow the window.
+/// null before first layout, and they are the viewer's laid-out bounds rather
+/// than the preset's nominal size, so under `match-display` they are expected
+/// to follow the window.
 fn parse_screen_size(text: &str) -> Result<(String, Option<String>)> {
     let trimmed = text.trim();
     if trimmed.is_empty() {

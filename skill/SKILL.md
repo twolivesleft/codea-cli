@@ -462,7 +462,7 @@ light.pop()
 - Use `sleep 2` or similar between `run` and `screenshot` to let the project render a frame
 - `exec` requires a project to already be running
 - `screen-size` resizes the running viewer, so use it to screenshot a project at several sizes or orientations without touching the project's code. `WIDTH`/`HEIGHT` inside Lua change with the preset, so this is a real resize, not a crop. It needs a project running and only the app's viewer supports it, so it reports an error rather than failing silently when no project is running or the target is a standalone Runner
-- Reading `screen-size` is a query, not a stored setting: the size it reports is the viewer's live bounds, so under `match-display` it follows the window and can change with no `screen-size` call at all. A project that has only just started may report a preset with no size yet
+- Reading `screen-size` is a live query, not a stored setting: the size it reports is the viewer's laid-out bounds rather than the preset's nominal size. Under `match-display` it is expected to follow the window, though that has not been observed — resizing the window on an iPad needs Stage Manager or split view. It can in principle report a preset with no size before the viewer lays out, but that has never been seen in practice, so don't build a workflow around it
 - Screenshot returns a PNG — save it and use vision to inspect results; do not open it in an external app unless the user explicitly asks
 - `codea logs` accumulates all output since last `clear-logs`; use `--head 20` when Codea is spamming a repeated error to find the original cause
 - File paths on device use `codea://` URIs internally; you don't need to deal with these directly

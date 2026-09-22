@@ -13,8 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   project's viewer, so a project can be checked at another aspect ratio or
   orientation. Presets are `match-display`, `iphone-portrait`,
   `iphone-landscape`, `tv` and `square`. Reading it also reports the viewer's
-  current pixel size, which is its live bounds rather than the preset's nominal
-  size, so under `match-display` it follows the window. Needs a Codea build that
+  current pixel size, taken from its laid-out bounds rather than the preset's
+  nominal size. Needs a Codea build that
   provides the `setScreenSize` and `getScreenSize` Air Code tools.
 
 ## [0.1.6] - 2026-04-02
