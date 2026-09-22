@@ -843,12 +843,11 @@ fn screen_size_command(args: ScreenSizeArgs, wait: bool) -> Result<()> {
     let mut client = client_for_profile(&args.profile, wait)?;
     match args.preset.as_deref() {
         None => {
-            let reported = client.get_screen_size()?;
-            let preset = reported.trim();
-            if preset.is_empty() {
-                bail!("Codea did not report a screen size.");
+            let (preset, size) = parse_screen_size(&client.get_screen_size()?)?;
+            match size {
+                Some(size) => println!("Screen size: {}, {size}", describe_screen_size(&preset)),
+                None => println!("Screen size: {}", describe_screen_size(&preset)),
             }
-            println!("Screen size: {}", describe_screen_size(preset));
         }
         Some(preset) => {
             let message = client.set_screen_size(preset)?;
@@ -870,12 +869,52 @@ fn screen_size_preset_ids() -> String {
         .join(", ")
 }
 
-/// Codea reports the current screen size as the bare preset id, matching the
-/// plain-text shape of `getRuntime`; the display name is mapped here.
+/// Maps a preset id to its display name, which lives here rather than on the
+/// device so the reported id stays the contract.
 fn describe_screen_size(preset: &str) -> String {
     match SCREEN_SIZE_PRESETS.iter().find(|(id, _)| *id == preset) {
         Some((id, label)) => format!("{id} \u{2014} {label}"),
         None => preset.to_string(),
+    }
+}
+
+/// Codea reports the current screen size as `{"preset": id}`, plus `width` and
+/// `height` once the viewer has laid out. Those two are omitted rather than
+/// null before first layout, and they are the viewer's live bounds rather than
+/// the preset's nominal size, so under `match-display` they follow the window.
+fn parse_screen_size(text: &str) -> Result<(String, Option<String>)> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        bail!("Codea did not report a screen size.");
+    }
+    let Ok(value) = serde_json::from_str::<Value>(trimmed) else {
+        bail!("Codea reported an unreadable screen size: {trimmed}");
+    };
+
+    let preset = value
+        .get("preset")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("Codea reported a screen size without a preset: {trimmed}"))?;
+    let size = match (
+        value.get("width").and_then(Value::as_f64),
+        value.get("height").and_then(Value::as_f64),
+    ) {
+        (Some(width), Some(height)) => Some(format!(
+            "{} \u{00d7} {}",
+            format_dimension(width),
+            format_dimension(height)
+        )),
+        _ => None,
+    };
+    Ok((preset.to_string(), size))
+}
+
+/// The viewer's bounds are fractional in principle, so avoid printing "1920.0".
+fn format_dimension(value: f64) -> String {
+    if value.fract() == 0.0 {
+        format!("{}", value as i64)
+    } else {
+        format!("{value}")
     }
 }
 
@@ -1725,7 +1764,7 @@ fn project_name(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        completion_kind_name, describe_screen_size, parse_collection_project,
+        completion_kind_name, describe_screen_size, parse_collection_project, parse_screen_size,
         resolve_runtime_filter,
     };
 
@@ -1768,6 +1807,43 @@ mod tests {
     fn completion_kind_name_matches_expected_values() {
         assert_eq!(completion_kind_name(3), Some("function"));
         assert_eq!(completion_kind_name(999), None);
+    }
+
+    #[test]
+    fn parse_screen_size_reads_preset_and_live_dimensions() {
+        let (preset, size) =
+            parse_screen_size(r#"{"height":1080,"preset":"tv","width":1920}"#).unwrap();
+        assert_eq!(preset, "tv");
+        assert_eq!(size.as_deref(), Some("1920 \u{00d7} 1080"));
+    }
+
+    #[test]
+    fn parse_screen_size_accepts_a_viewer_that_has_not_laid_out() {
+        let (preset, size) = parse_screen_size(r#"{"preset":"tv"}"#).unwrap();
+        assert_eq!(preset, "tv");
+        assert_eq!(size, None);
+    }
+
+    #[test]
+    fn parse_screen_size_ignores_a_lone_dimension() {
+        let (preset, size) = parse_screen_size(r#"{"preset":"square","width":1112}"#).unwrap();
+        assert_eq!(preset, "square");
+        assert_eq!(size, None);
+    }
+
+    #[test]
+    fn parse_screen_size_keeps_fractional_bounds_but_not_trailing_zeros() {
+        let (_, size) =
+            parse_screen_size(r#"{"preset":"match-display","width":1592.5,"height":1192}"#)
+                .unwrap();
+        assert_eq!(size.as_deref(), Some("1592.5 \u{00d7} 1192"));
+    }
+
+    #[test]
+    fn parse_screen_size_rejects_unusable_answers() {
+        assert!(parse_screen_size("   ").is_err());
+        assert!(parse_screen_size("tv").is_err());
+        assert!(parse_screen_size(r#"{"width":1920,"height":1080}"#).is_err());
     }
 
     #[test]
