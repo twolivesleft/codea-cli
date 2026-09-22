@@ -1,0 +1,14 @@
+# The only home for cargo-release config: keys here are overridden by
+# [package.metadata.release] in Cargo.toml, so that section must stay absent.
+# Distribution is handled by cargo-dist from the pushed tag, not by crates.io.
+publish = false
+
+allow-branch = ["main"]
+tag-name = "v{{version}}"
+tag-message = "chore: Release {{crate_name}} version {{version}}"
+pre-release-commit-message = "chore: release {{version}}"
+
+pre-release-replacements = [
+  { file = "CHANGELOG.md", search = "## \\[Unreleased\\]", replace = "## [Unreleased]\n\n## [{{version}}] - {{date}}", exactly = 1 },
+  { file = "CHANGELOG.md", search = "\\[Unreleased\\]: (.*)/compare/v(.*)\\.\\.\\.HEAD", replace = "[Unreleased]: ${1}/compare/v{{version}}...HEAD\n[{{version}}]: ${1}/compare/v${2}...v{{version}}", exactly = 1 },
+]

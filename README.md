@@ -244,7 +244,7 @@ codea logs --follow
 - `ls`, `new`, `rename`, `move`, `delete`
 - `pull`, `push`
 - `run`, `stop`, `restart`, `pause`, `resume`, `paused`, `exec`
-- `screenshot`, `idle-timer`, `logs`, `clear-logs`
+- `screenshot`, `screen-size`, `idle-timer`, `logs`, `clear-logs`
 - `collections ls|new|delete`
 - `templates ls|add|remove`
 - `deps ls|available|add|remove`
