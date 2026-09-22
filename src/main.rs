@@ -23,6 +23,14 @@ use crate::discover::{DiscoverEvent, discover_devices_with_progress};
 use crate::local::create_local_project;
 use crate::mcp::{MCPClient, maybe_base64_text};
 
+const SCREEN_SIZE_PRESETS: [(&str, &str); 5] = [
+    ("match-display", "Match Display"),
+    ("iphone-portrait", "iPhone (Portrait)"),
+    ("iphone-landscape", "iPhone (Landscape)"),
+    ("tv", "TV (16:9)"),
+    ("square", "Square (1:1)"),
+];
+
 #[derive(Parser, Debug)]
 #[command(name = "codea")]
 #[command(about = "Codea CLI — connect to Codea on your device.")]
@@ -53,6 +61,8 @@ enum Commands {
     Screenshot(ScreenshotArgs),
     #[command(name = "idle-timer")]
     IdleTimer(IdleTimerArgs),
+    #[command(name = "screen-size")]
+    ScreenSize(ScreenSizeArgs),
     Logs(LogsArgs),
     #[command(name = "clear-logs")]
     ClearLogs(ProfileArg),
@@ -152,6 +162,17 @@ struct ScreenshotArgs {
 #[derive(Args, Debug)]
 struct IdleTimerArgs {
     state: Option<String>,
+    #[arg(long, default_value = "default")]
+    profile: String,
+}
+
+#[derive(Args, Debug)]
+struct ScreenSizeArgs {
+    #[arg(
+        value_name = "preset",
+        help = "match-display, iphone-portrait, iphone-landscape, tv, or square"
+    )]
+    preset: Option<String>,
     #[arg(long, default_value = "default")]
     profile: String,
 }
@@ -358,6 +379,7 @@ fn run() -> Result<()> {
         Commands::Exec(args) => exec_command(args, cli.wait),
         Commands::Screenshot(args) => screenshot_command(args, cli.wait),
         Commands::IdleTimer(args) => idle_timer_command(args, cli.wait),
+        Commands::ScreenSize(args) => screen_size_command(args, cli.wait),
         Commands::Logs(args) => logs_command(args, cli.wait),
         Commands::ClearLogs(args) => clear_logs_command(&args.profile, cli.wait),
         Commands::New(args) => new_command(args, cli.wait),
@@ -805,6 +827,56 @@ fn idle_timer_command(args: IdleTimerArgs, wait: bool) -> Result<()> {
         Some(other) => bail!("Invalid state '{}'. Use on or off.", other),
     }
     Ok(())
+}
+
+fn screen_size_command(args: ScreenSizeArgs, wait: bool) -> Result<()> {
+    if let Some(preset) = args.preset.as_deref()
+        && !SCREEN_SIZE_PRESETS.iter().any(|(id, _)| *id == preset)
+    {
+        bail!(
+            "Invalid preset '{}'. Use one of: {}.",
+            preset,
+            screen_size_preset_ids()
+        );
+    }
+
+    let mut client = client_for_profile(&args.profile, wait)?;
+    match args.preset.as_deref() {
+        None => {
+            let reported = client.get_screen_size()?;
+            let preset = reported.trim();
+            if preset.is_empty() {
+                bail!("Codea did not report a screen size.");
+            }
+            println!("Screen size: {}", describe_screen_size(preset));
+        }
+        Some(preset) => {
+            let message = client.set_screen_size(preset)?;
+            if message.trim().is_empty() {
+                println!("Screen size: {}", describe_screen_size(preset));
+            } else {
+                println!("{message}");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn screen_size_preset_ids() -> String {
+    SCREEN_SIZE_PRESETS
+        .iter()
+        .map(|(id, _)| *id)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Codea reports the current screen size as the bare preset id, matching the
+/// plain-text shape of `getRuntime`; the display name is mapped here.
+fn describe_screen_size(preset: &str) -> String {
+    match SCREEN_SIZE_PRESETS.iter().find(|(id, _)| *id == preset) {
+        Some((id, label)) => format!("{id} \u{2014} {label}"),
+        None => preset.to_string(),
+    }
 }
 
 fn logs_command(args: LogsArgs, wait: bool) -> Result<()> {
@@ -1652,7 +1724,10 @@ fn project_name(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{completion_kind_name, parse_collection_project, resolve_runtime_filter};
+    use super::{
+        completion_kind_name, describe_screen_size, parse_collection_project,
+        resolve_runtime_filter,
+    };
 
     #[test]
     fn parse_collection_project_supports_icloud_prefix() {
@@ -1693,5 +1768,14 @@ mod tests {
     fn completion_kind_name_matches_expected_values() {
         assert_eq!(completion_kind_name(3), Some("function"));
         assert_eq!(completion_kind_name(999), None);
+    }
+
+    #[test]
+    fn describe_screen_size_falls_back_to_unknown_id() {
+        assert_eq!(
+            describe_screen_size("match-display"),
+            "match-display \u{2014} Match Display"
+        );
+        assert_eq!(describe_screen_size("holodeck"), "holodeck");
     }
 }

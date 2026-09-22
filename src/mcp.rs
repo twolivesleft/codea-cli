@@ -282,6 +282,16 @@ impl MCPClient {
         )?))
     }
 
+    pub fn get_screen_size(&mut self) -> Result<String> {
+        Ok(Self::text(&self.call_tool("getScreenSize", json!({}))?))
+    }
+
+    pub fn set_screen_size(&mut self, preset: &str) -> Result<String> {
+        Ok(Self::text(
+            &self.call_tool("setScreenSize", json!({"preset": preset}))?,
+        ))
+    }
+
     pub fn get_function_help(&mut self, function_name: &str) -> Result<Value> {
         Self::json_result(
             &self.call_tool("getFunctionHelp", json!({"functionName": function_name}))?,
