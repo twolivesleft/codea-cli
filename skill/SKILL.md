@@ -461,7 +461,7 @@ light.pop()
 - Always `pull` before editing to get the latest files from device
 - Use `sleep 2` or similar between `run` and `screenshot` to let the project render a frame
 - `exec` requires a project to already be running
-- `screen-size` resizes the running viewer, so use it to screenshot a project at several sizes or orientations without touching the project's code. It needs a project running, and it is a Codea Pro feature — expect an error rather than a paywall if either is missing
+- `screen-size` resizes the running viewer, so use it to screenshot a project at several sizes or orientations without touching the project's code. `WIDTH`/`HEIGHT` inside Lua change with the preset, so this is a real resize, not a crop. It needs a project running and only the app's viewer supports it, so it reports an error rather than failing silently when no project is running or the target is a standalone Runner
 - Screenshot returns a PNG — save it and use vision to inspect results; do not open it in an external app unless the user explicitly asks
 - `codea logs` accumulates all output since last `clear-logs`; use `--head 20` when Codea is spamming a repeated error to find the original cause
 - File paths on device use `codea://` URIs internally; you don't need to deal with these directly
