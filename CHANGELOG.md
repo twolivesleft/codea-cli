@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-24
+
 ### Added
 
 - `codea screen-size [preset]` reads or sets the screen size of the running
@@ -70,7 +72,8 @@ runtime type, query the API docs and autocomplete data, capture screenshots,
 stream logs, push and pull project files, and create local projects. Ships
 Homebrew, PowerShell and MSI installers.
 
-[Unreleased]: https://github.com/twolivesleft/codea-cli/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/twolivesleft/codea-cli/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/twolivesleft/codea-cli/compare/v0.1.6...v0.2.0
 [0.1.6]: https://github.com/twolivesleft/codea-cli/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/twolivesleft/codea-cli/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/twolivesleft/codea-cli/compare/v0.1.3...v0.1.4
