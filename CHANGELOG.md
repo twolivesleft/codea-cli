@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## Added
+
+- Support for querying multiple windows in supported runners (currently Codea Runner only).
+  Use the `--window` option to target commands to a specific window, or use `codea windows`
+  to list them all
+
 ## [0.2.0] - 2026-09-24
 
 ### Added
