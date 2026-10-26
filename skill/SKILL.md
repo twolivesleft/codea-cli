@@ -213,6 +213,33 @@ codea --wait run /path/to/MyGame.codea
 
 Always prefer `--wait` over asking the user to manually switch to Codea first.
 
+## Runner windows and views
+
+On a multi-window Runner, commands default to the **last focused window**. For repeatable automation, enumerate targets and pass their IDs explicitly:
+
+```bash
+codea windows                     # Human-readable window and view IDs
+codea windows --json              # Structured inventory, including isDefault
+codea window new                  # New blank window
+codea window new /path/Game.codea # New window, load project
+codea run /path/Game.codea --new-window
+codea run /path/Other.codea --window WINDOW_ID
+codea status --window WINDOW_ID
+codea screenshot --window WINDOW_ID --output window.png
+codea screenshot --view VIEW_ID --output cell.png
+codea exec 'print(WIDTH, HEIGHT)' --view VIEW_ID
+codea logs --follow --window WINDOW_ID
+codea window close WINDOW_ID
+```
+
+`run` replaces the selected view's project; `stop` leaves its window open. `window close` closes the entire window and requires its ID. Creation returns JSON containing the window and view IDs. Loading completes after the first frame is submitted, so screenshots can follow immediately on the updated Runner.
+
+A screenshot without `--view` captures the whole selected window, including all grid cells. Runtime commands (`run`, `stop`, `restart`, `pause`, `resume`, `exec`, and logs) require `--view` when the window contains several projects. A view ID alone selects its owning window; when both IDs are supplied they must match. `status` can describe a whole grid.
+
+IDs remain stable while their window/view is alive. Enumerate again after closing windows or relaunching. Invalid or stale IDs fail rather than falling back to another project. Log output and clearing are isolated per view; `logs --follow` stays pinned to the initially selected view through focus changes and log clearing, and ends when its window closes.
+
+These commands require an updated CLI and Runner. Check `codea windows --help` for CLI support. An older server rejects window targeting explicitly; existing commands without selectors continue to work. When testing a CLI checkout, use its built `target/debug/codea` or `target/release/codea` rather than an older installed executable.
+
 ## Commands
 
 ### Device
@@ -458,8 +485,8 @@ light.pop()
 
 ## Notes for Agents
 
-- Always `pull` before editing to get the latest files from device
-- Use `sleep 2` or similar between `run` and `screenshot` to let the project render a frame
+- On collection-backed targets, `pull` before editing to get the latest files from the device. On filesystem-backed targets, edit the project files directly.
+- Older hosts may need a short wait between `run` and `screenshot`; the updated multi-window Runner waits for the first frame during loading.
 - `exec` requires a project to already be running
 - `screen-size` resizes the running viewer, so use it to screenshot a project at several sizes or orientations without touching the project's code. `WIDTH`/`HEIGHT` inside Lua change with the preset, so this is a real resize, not a crop. It needs a project running and only the app's viewer supports it, so it reports an error rather than failing silently when no project is running or the target is a standalone Runner
 - Reading `screen-size` is a live query, not a stored setting: the size it reports is the viewer's laid-out bounds rather than the preset's nominal size. Under `match-display` it is expected to follow the window, though that has not been observed — resizing the window on an iPad needs Stage Manager or split view. It can in principle report a preset with no size before the viewer lays out, but that has never been seen in practice, so don't build a workflow around it

@@ -38,12 +38,57 @@ struct Cli {
     #[arg(long, global = true, action = ArgAction::SetTrue, help = "Wait for Codea to become reachable before running the command.")]
     wait: bool,
 
+    #[command(flatten)]
+    target: TargetArgs,
+
     #[command(subcommand)]
     command: Commands,
 }
 
+#[derive(Args, Debug, Default)]
+struct TargetArgs {
+    /// Window ID from `codea windows`; defaults to the last focused window.
+    #[arg(long, global = true)]
+    window: Option<String>,
+    /// View ID from `codea windows`; required for runtime commands in a grid.
+    #[arg(long, global = true)]
+    view: Option<String>,
+}
+
+#[derive(Args, Debug)]
+struct WindowsArgs {
+    #[arg(long)]
+    json: bool,
+    #[arg(long, default_value = "default")]
+    profile: String,
+}
+
+#[derive(Args, Debug)]
+struct WindowArgs {
+    #[command(subcommand)]
+    command: WindowCommand,
+}
+
+#[derive(Subcommand, Debug)]
+enum WindowCommand {
+    /// Open a blank window, optionally loading a project into it.
+    New {
+        project: Option<String>,
+        #[arg(long, default_value = "default")]
+        profile: String,
+    },
+    /// Close a window by its exact ID (also stops its projects).
+    Close {
+        id: String,
+        #[arg(long, default_value = "default")]
+        profile: String,
+    },
+}
+
 #[derive(Subcommand, Debug)]
 enum Commands {
+    Windows(WindowsArgs),
+    Window(WindowArgs),
     Discover(DiscoverArgs),
     Configure(ConfigureArgs),
     Status(ProfileArg),
@@ -131,6 +176,8 @@ struct PushArgs {
 #[derive(Args, Debug)]
 struct RunArgs {
     project: String,
+    #[arg(long, conflicts_with_all = ["window", "view"])]
+    new_window: bool,
     #[arg(long, default_value = "default")]
     profile: String,
 }
@@ -363,25 +410,48 @@ fn main() {
 
 fn run() -> Result<()> {
     let cli = Cli::parse();
+    if (cli.target.window.is_some() || cli.target.view.is_some())
+        && !matches!(
+            &cli.command,
+            Commands::Status(_)
+                | Commands::Run(_)
+                | Commands::Stop(_)
+                | Commands::Restart(_)
+                | Commands::Pause(_)
+                | Commands::Resume(_)
+                | Commands::Paused(_)
+                | Commands::Exec(_)
+                | Commands::Screenshot(_)
+                | Commands::Logs(_)
+                | Commands::ClearLogs(_)
+                | Commands::ScreenSize(_)
+        )
+    {
+        bail!(
+            "--window and --view apply to runtime commands and screenshots. Use window close <id> to close a window."
+        );
+    }
     let result = match cli.command {
+        Commands::Windows(args) => windows_command(args, cli.wait),
+        Commands::Window(args) => window_command(args, cli.wait),
         Commands::Discover(args) => discover_command(args),
         Commands::Configure(args) => configure_command(args),
-        Commands::Status(args) => status_command(&args.profile),
+        Commands::Status(args) => status_command(&args.profile, &cli.target),
         Commands::Ls(args) => ls_command(&args.profile, cli.wait),
         Commands::Pull(args) => pull_command(args, cli.wait),
         Commands::Push(args) => push_command(args, cli.wait),
-        Commands::Run(args) => run_command(args, cli.wait),
-        Commands::Stop(args) => stop_command(&args.profile, cli.wait),
-        Commands::Restart(args) => restart_command(&args.profile, cli.wait),
-        Commands::Pause(args) => pause_command(&args.profile, cli.wait),
-        Commands::Resume(args) => resume_command(&args.profile, cli.wait),
-        Commands::Paused(args) => paused_command(args, cli.wait),
-        Commands::Exec(args) => exec_command(args, cli.wait),
-        Commands::Screenshot(args) => screenshot_command(args, cli.wait),
+        Commands::Run(args) => run_command(args, cli.wait, &cli.target),
+        Commands::Stop(args) => stop_command(&args.profile, cli.wait, &cli.target),
+        Commands::Restart(args) => restart_command(&args.profile, cli.wait, &cli.target),
+        Commands::Pause(args) => pause_command(&args.profile, cli.wait, &cli.target),
+        Commands::Resume(args) => resume_command(&args.profile, cli.wait, &cli.target),
+        Commands::Paused(args) => paused_command(args, cli.wait, &cli.target),
+        Commands::Exec(args) => exec_command(args, cli.wait, &cli.target),
+        Commands::Screenshot(args) => screenshot_command(args, cli.wait, &cli.target),
         Commands::IdleTimer(args) => idle_timer_command(args, cli.wait),
-        Commands::ScreenSize(args) => screen_size_command(args, cli.wait),
-        Commands::Logs(args) => logs_command(args, cli.wait),
-        Commands::ClearLogs(args) => clear_logs_command(&args.profile, cli.wait),
+        Commands::ScreenSize(args) => screen_size_command(args, cli.wait, &cli.target),
+        Commands::Logs(args) => logs_command(args, cli.wait, &cli.target),
+        Commands::ClearLogs(args) => clear_logs_command(&args.profile, cli.wait, &cli.target),
         Commands::New(args) => new_command(args, cli.wait),
         Commands::Rename(args) => rename_command(args, cli.wait),
         Commands::Move(args) => move_command(args, cli.wait),
@@ -400,6 +470,73 @@ fn run() -> Result<()> {
     }
 
     result
+}
+
+fn runtime_client(profile: &str, wait: bool, target: &TargetArgs) -> Result<MCPClient> {
+    let mut client = client_for_profile(profile, wait)?;
+    client.set_target(target.window.clone(), target.view.clone());
+    Ok(client)
+}
+
+fn project_argument(project: &str) -> String {
+    fs::canonicalize(project)
+        .ok()
+        .filter(|path| path.is_dir())
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_else(|| project.to_string())
+}
+
+fn windows_command(args: WindowsArgs, wait: bool) -> Result<()> {
+    let mut client = client_for_profile(&args.profile, wait)?;
+    let windows = MCPClient::json_result(&client.call_tool("listWindows", json!({}))?)?;
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&windows)?);
+        return Ok(());
+    }
+    for window in windows
+        .as_array()
+        .ok_or_else(|| anyhow!("Invalid windows response"))?
+    {
+        let id = window["windowId"].as_str().unwrap_or("?");
+        let mark = if window["isDefault"].as_bool() == Some(true) {
+            " * default"
+        } else {
+            ""
+        };
+        println!("{id}{mark}");
+        if let Some(views) = window["views"].as_array() {
+            for view in views {
+                println!(
+                    "  {}  {}{}",
+                    view["viewId"].as_str().unwrap_or("?"),
+                    view["projectPath"].as_str().unwrap_or("(blank)"),
+                    if view["paused"].as_bool() == Some(true) {
+                        " (paused)"
+                    } else {
+                        ""
+                    }
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn window_command(args: WindowArgs, wait: bool) -> Result<()> {
+    let result = match args.command {
+        WindowCommand::New { project, profile } => {
+            let mut client = client_for_profile(&profile, wait)?;
+            let arguments = project
+                .map(|path| json!({"path": project_argument(&path)}))
+                .unwrap_or_else(|| json!({}));
+            client.call_tool("newWindow", arguments)?
+        }
+        WindowCommand::Close { id, profile } => {
+            client_for_profile(&profile, wait)?.call_tool("closeWindow", json!({"windowId": id}))?
+        }
+    };
+    println!("{}", MCPClient::text(&result));
+    Ok(())
 }
 
 fn client_for_profile(profile: &str, wait: bool) -> Result<MCPClient> {
@@ -525,7 +662,7 @@ fn configure_command(args: ConfigureArgs) -> Result<()> {
     Ok(())
 }
 
-fn status_command(profile: &str) -> Result<()> {
+fn status_command(profile: &str, target: &TargetArgs) -> Result<()> {
     let Some((host, port, source)) = resolve_status_source(profile)? else {
         println!("Not configured. Run 'codea discover' or 'codea configure'.");
         return Ok(());
@@ -536,7 +673,10 @@ fn status_command(profile: &str) -> Result<()> {
     println!("Profile: {profile}");
     println!("Source:  {source}");
 
-    match MCPClient::new(&host, port, 30).and_then(|mut client| client.get_device_state()) {
+    match MCPClient::new(&host, port, 30).and_then(|mut client| {
+        client.set_target(target.window.clone(), target.view.clone());
+        client.get_device_state()
+    }) {
         Ok(state) => {
             println!();
             let project_state = state.get("state").and_then(Value::as_str).unwrap_or("none");
@@ -556,7 +696,15 @@ fn status_command(profile: &str) -> Result<()> {
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
 
-            if project_state == "running" {
+            if let Some(id) = state.get("windowId").and_then(Value::as_str) {
+                println!("Window: {id}");
+            }
+            if let Some(id) = state.get("viewId").and_then(Value::as_str) {
+                println!("View:   {id}");
+            }
+            if project_state == "multiple" {
+                println!("State:   Multiple projects; use codea windows and --view <id>");
+            } else if project_state == "running" {
                 let mut label = if let Some(project_path) = project_path {
                     format!("Running: {project_path}")
                 } else if let Some(project_name) = project_name {
@@ -587,7 +735,8 @@ fn status_command(profile: &str) -> Result<()> {
                 }
             );
         }
-        Err(_) => println!("\nState:   (device unreachable)"),
+        Err(error) if target.window.is_some() || target.view.is_some() => return Err(error),
+        Err(error) => println!("\nState:   {error}"),
     }
     Ok(())
 }
@@ -707,20 +856,28 @@ fn push_command(args: PushArgs, wait: bool) -> Result<()> {
     Ok(())
 }
 
-fn run_command(args: RunArgs, wait: bool) -> Result<()> {
-    let mut client = client_for_profile(&args.profile, wait)?;
-    println!("{}", client.run_project(&args.project)?);
+fn run_command(args: RunArgs, wait: bool, target: &TargetArgs) -> Result<()> {
+    let mut client = runtime_client(&args.profile, wait, target)?;
+    let path = project_argument(&args.project);
+    if args.new_window {
+        println!(
+            "{}",
+            MCPClient::text(&client.call_tool("newWindow", json!({"path": path}))?)
+        );
+    } else {
+        println!("{}", client.run_project(&path)?);
+    }
     Ok(())
 }
 
-fn stop_command(profile: &str, wait: bool) -> Result<()> {
-    let mut client = client_for_profile(profile, wait)?;
+fn stop_command(profile: &str, wait: bool, target: &TargetArgs) -> Result<()> {
+    let mut client = runtime_client(profile, wait, target)?;
     println!("{}", client.stop_project()?);
     Ok(())
 }
 
-fn restart_command(profile: &str, wait: bool) -> Result<()> {
-    let mut client = client_for_profile(profile, wait)?;
+fn restart_command(profile: &str, wait: bool, target: &TargetArgs) -> Result<()> {
+    let mut client = runtime_client(profile, wait, target)?;
     println!(
         "{}",
         MCPClient::text(&client.call_tool("restartProject", json!({}))?)
@@ -728,22 +885,22 @@ fn restart_command(profile: &str, wait: bool) -> Result<()> {
     Ok(())
 }
 
-fn pause_command(profile: &str, wait: bool) -> Result<()> {
-    let mut client = client_for_profile(profile, wait)?;
+fn pause_command(profile: &str, wait: bool, target: &TargetArgs) -> Result<()> {
+    let mut client = runtime_client(profile, wait, target)?;
     let _ = client.execute_lua("viewer.paused = true")?;
     println!("Project paused");
     Ok(())
 }
 
-fn resume_command(profile: &str, wait: bool) -> Result<()> {
-    let mut client = client_for_profile(profile, wait)?;
+fn resume_command(profile: &str, wait: bool, target: &TargetArgs) -> Result<()> {
+    let mut client = runtime_client(profile, wait, target)?;
     let _ = client.execute_lua("viewer.paused = false")?;
     println!("Project resumed");
     Ok(())
 }
 
-fn paused_command(args: PausedArgs, wait: bool) -> Result<()> {
-    let mut client = client_for_profile(&args.profile, wait)?;
+fn paused_command(args: PausedArgs, wait: bool, target: &TargetArgs) -> Result<()> {
+    let mut client = runtime_client(&args.profile, wait, target)?;
     match args.state.as_deref() {
         None => {
             let paused = client
@@ -766,7 +923,7 @@ fn paused_command(args: PausedArgs, wait: bool) -> Result<()> {
     Ok(())
 }
 
-fn exec_command(args: ExecArgs, wait: bool) -> Result<()> {
+fn exec_command(args: ExecArgs, wait: bool, target: &TargetArgs) -> Result<()> {
     if args.lua_file.is_some() && args.code.is_some() {
         bail!("Provide either CODE or --file, not both.");
     }
@@ -776,7 +933,7 @@ fn exec_command(args: ExecArgs, wait: bool) -> Result<()> {
         (None, None) => bail!("Provide either CODE or --file."),
         (Some(_), Some(_)) => unreachable!(),
     };
-    let mut client = client_for_profile(&args.profile, wait)?;
+    let mut client = runtime_client(&args.profile, wait, target)?;
     let result = client.execute_lua(&code)?;
     if !result.is_empty() {
         println!("{result}");
@@ -784,8 +941,8 @@ fn exec_command(args: ExecArgs, wait: bool) -> Result<()> {
     Ok(())
 }
 
-fn screenshot_command(args: ScreenshotArgs, wait: bool) -> Result<()> {
-    let mut client = client_for_profile(&args.profile, wait)?;
+fn screenshot_command(args: ScreenshotArgs, wait: bool, target: &TargetArgs) -> Result<()> {
+    let mut client = runtime_client(&args.profile, wait, target)?;
     let Some(data) = client.capture_screenshot()? else {
         bail!("Screenshot capture failed or not supported.");
     };
@@ -829,7 +986,7 @@ fn idle_timer_command(args: IdleTimerArgs, wait: bool) -> Result<()> {
     Ok(())
 }
 
-fn screen_size_command(args: ScreenSizeArgs, wait: bool) -> Result<()> {
+fn screen_size_command(args: ScreenSizeArgs, wait: bool, target: &TargetArgs) -> Result<()> {
     if let Some(preset) = args.preset.as_deref()
         && !SCREEN_SIZE_PRESETS.iter().any(|(id, _)| *id == preset)
     {
@@ -840,7 +997,7 @@ fn screen_size_command(args: ScreenSizeArgs, wait: bool) -> Result<()> {
         );
     }
 
-    let mut client = client_for_profile(&args.profile, wait)?;
+    let mut client = runtime_client(&args.profile, wait, target)?;
     match args.preset.as_deref() {
         None => {
             let (preset, size) = parse_screen_size(&client.get_screen_size()?)?;
@@ -919,8 +1076,8 @@ fn format_dimension(value: f64) -> String {
     }
 }
 
-fn logs_command(args: LogsArgs, wait: bool) -> Result<()> {
-    let mut client = client_for_profile(&args.profile, wait)?;
+fn logs_command(args: LogsArgs, wait: bool, target: &TargetArgs) -> Result<()> {
+    let mut client = runtime_client(&args.profile, wait, target)?;
     if args.follow {
         for line in client.stream_logs()? {
             println!("{}", line?);
@@ -942,8 +1099,8 @@ fn logs_command(args: LogsArgs, wait: bool) -> Result<()> {
     Ok(())
 }
 
-fn clear_logs_command(profile: &str, wait: bool) -> Result<()> {
-    let mut client = client_for_profile(profile, wait)?;
+fn clear_logs_command(profile: &str, wait: bool, target: &TargetArgs) -> Result<()> {
+    let mut client = runtime_client(profile, wait, target)?;
     println!(
         "{}",
         MCPClient::text(&client.call_tool("clearLogs", json!({}))?)
@@ -1764,6 +1921,47 @@ fn project_name(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::{Cli, Commands};
+    use clap::Parser;
+
+    #[test]
+    fn window_arguments_work_before_and_after_commands() {
+        for args in [
+            vec!["codea", "--window", "w1", "screenshot", "--view", "v2"],
+            vec!["codea", "screenshot", "--window", "w1", "--view", "v2"],
+        ] {
+            let cli = Cli::try_parse_from(args).unwrap();
+            assert_eq!(cli.target.window.as_deref(), Some("w1"));
+            assert_eq!(cli.target.view.as_deref(), Some("v2"));
+        }
+        assert!(matches!(
+            Cli::try_parse_from(["codea", "windows", "--json"])
+                .unwrap()
+                .command,
+            Commands::Windows(_)
+        ));
+    }
+
+    #[test]
+    fn new_window_rejects_existing_targets_and_close_requires_id() {
+        assert!(
+            Cli::try_parse_from([
+                "codea",
+                "run",
+                "test.codea",
+                "--new-window",
+                "--window",
+                "w1"
+            ])
+            .is_err()
+        );
+        assert!(
+            Cli::try_parse_from(["codea", "run", "test.codea", "--new-window", "--view", "v1"])
+                .is_err()
+        );
+        assert!(Cli::try_parse_from(["codea", "window", "close"]).is_err());
+        assert!(Cli::try_parse_from(["codea", "window", "new"]).is_ok());
+    }
     use super::{
         completion_kind_name, describe_screen_size, parse_collection_project, parse_screen_size,
         resolve_runtime_filter,

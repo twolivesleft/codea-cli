@@ -28,6 +28,33 @@ The CLI works with both:
 - local macOS `Carbide.app` runners
 - remote iOS / iPadOS Codea runtimes that expose the same MCP surface
 
+## Runner windows and views
+
+On a multi-window Runner, commands default to the **last focused window**. For repeatable automation, enumerate targets and pass their IDs explicitly:
+
+```bash
+codea windows                     # Human-readable window and view IDs
+codea windows --json              # Structured inventory, including isDefault
+codea window new                  # New blank window
+codea window new /path/Game.codea # New window, load project
+codea run /path/Game.codea --new-window
+codea run /path/Other.codea --window WINDOW_ID
+codea status --window WINDOW_ID
+codea screenshot --window WINDOW_ID --output window.png
+codea screenshot --view VIEW_ID --output cell.png
+codea exec 'print(WIDTH, HEIGHT)' --view VIEW_ID
+codea logs --follow --window WINDOW_ID
+codea window close WINDOW_ID
+```
+
+`run` replaces the selected view's project; `stop` leaves its window open. `window close` closes the entire window and requires its ID. Creation returns JSON containing the window and view IDs. Loading completes after the first frame is submitted, so screenshots can follow immediately on the updated Runner.
+
+A screenshot without `--view` captures the whole selected window, including all grid cells. Runtime commands (`run`, `stop`, `restart`, `pause`, `resume`, `exec`, and logs) require `--view` when the window contains several projects. A view ID alone selects its owning window; when both IDs are supplied they must match. `status` can describe a whole grid.
+
+IDs remain stable while their window/view is alive. Enumerate again after closing windows or relaunching. Invalid or stale IDs fail rather than falling back to another project. Log output and clearing are isolated per view; `logs --follow` stays pinned to the initially selected view through focus changes and log clearing, and ends when its window closes.
+
+These commands require an updated CLI and Runner. Check `codea windows --help` for CLI support. An older server rejects window targeting explicitly; existing commands without selectors continue to work. When testing a CLI checkout, use its built `target/debug/codea` or `target/release/codea` rather than an older installed executable.
+
 ## Install
 
 Install via Homebrew
