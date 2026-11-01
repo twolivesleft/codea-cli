@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-01
+
 ### Fixed
 
 - `codea pull` writes binary files (images, sounds, ROMs) as the original bytes
@@ -93,7 +95,8 @@ runtime type, query the API docs and autocomplete data, capture screenshots,
 stream logs, push and pull project files, and create local projects. Ships
 Homebrew, PowerShell and MSI installers.
 
-[Unreleased]: https://github.com/twolivesleft/codea-cli/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/twolivesleft/codea-cli/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/twolivesleft/codea-cli/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/twolivesleft/codea-cli/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/twolivesleft/codea-cli/compare/v0.1.6...v0.2.0
 [0.1.6]: https://github.com/twolivesleft/codea-cli/compare/v0.1.5...v0.1.6
