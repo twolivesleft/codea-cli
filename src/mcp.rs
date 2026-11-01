@@ -16,7 +16,7 @@ pub struct MCPClient {
     initialized: bool,
     window_id: Option<String>,
     view_id: Option<String>,
-    supports_windows: Option<bool>,
+    tools: Option<Vec<Value>>,
 }
 
 impl MCPClient {
@@ -31,7 +31,7 @@ impl MCPClient {
             initialized: false,
             window_id: None,
             view_id: None,
-            supports_windows: None,
+            tools: None,
         })
     }
 
@@ -79,22 +79,36 @@ impl MCPClient {
         self.view_id = view_id;
     }
 
-    fn ensure_window_support(&mut self) -> Result<()> {
+    fn tools(&mut self) -> Result<&[Value]> {
         if !self.initialized {
             self.initialize()?;
         }
-        if self.supports_windows.is_none() {
+        if self.tools.is_none() {
             let id = self.next_id();
             let response = self.post_json(
                 &json!({"jsonrpc":"2.0", "id":id, "method":"tools/list", "params":{}}),
             )?;
-            self.supports_windows = Some(
+            self.tools = Some(
                 response["result"]["tools"]
                     .as_array()
-                    .is_some_and(|tools| tools.iter().any(|tool| tool["name"] == "listWindows")),
+                    .cloned()
+                    .unwrap_or_default(),
             );
         }
-        if self.supports_windows != Some(true) {
+        Ok(self.tools.as_deref().unwrap_or_default())
+    }
+
+    /// Codea builds that declare `encoding` on `readFile` send and accept any
+    /// file as base64; older ones choose text or base64 by extension.
+    fn supports_file_encoding(&mut self) -> Result<bool> {
+        Ok(self.tools()?.iter().any(|tool| {
+            tool["name"] == "readFile" && !tool["inputSchema"]["properties"]["encoding"].is_null()
+        }))
+    }
+
+    fn ensure_window_support(&mut self) -> Result<()> {
+        let supports_windows = self.tools()?.iter().any(|tool| tool["name"] == "listWindows");
+        if !supports_windows {
             bail!(
                 "This Codea server does not support window targeting. Update Runner, or omit --window/--view for legacy single-window use."
             );
@@ -213,6 +227,31 @@ impl MCPClient {
     pub fn write_file(&mut self, file_path: &str, content: &str) -> Result<()> {
         let _ = self.call_tool("writeFile", json!({"path": file_path, "content": content}))?;
         Ok(())
+    }
+
+    pub fn read_file_bytes(&mut self, file_path: &str) -> Result<Vec<u8>> {
+        if self.supports_file_encoding()? {
+            let content = Self::text(
+                &self.call_tool("readFile", json!({"path": file_path, "encoding": "base64"}))?,
+            );
+            Ok(general_purpose::STANDARD.decode(content.trim())?)
+        } else {
+            let content = self.read_file(file_path)?;
+            decode_file_content(file_path, content)
+        }
+    }
+
+    pub fn write_file_bytes(&mut self, file_path: &str, bytes: &[u8]) -> Result<()> {
+        if self.supports_file_encoding()? {
+            let content = general_purpose::STANDARD.encode(bytes);
+            let _ = self.call_tool(
+                "writeFile",
+                json!({"path": file_path, "content": content, "encoding": "base64"}),
+            )?;
+            Ok(())
+        } else {
+            self.write_file(file_path, &encode_file_content(file_path, bytes))
+        }
     }
 
     pub fn run_project(&mut self, project_path: &str) -> Result<String> {
@@ -533,6 +572,43 @@ mod tests {
             assert_eq!(request["params"]["arguments"]["windowId"], "window-a");
             assert_eq!(request["params"]["arguments"]["viewId"], "view-b");
         }
+    }
+
+    fn encoding_tools() -> Value {
+        json!({"result":{"tools":[{"name":"readFile","inputSchema":{"properties":{"path":{},"encoding":{}}}}]}})
+    }
+
+    #[test]
+    fn files_travel_as_base64_when_codea_declares_encoding() {
+        let (port, thread) = server(vec![
+            encoding_tools(),
+            json!({"result":{"content":[{"type":"text","text":"aGk="}]}}),
+            json!({"result":{"content":[]}}),
+        ]);
+        let mut client = MCPClient::new("127.0.0.1", port, 5).unwrap();
+        client.initialized = true;
+        assert_eq!(client.read_file_bytes("P/Main.lua").unwrap(), b"hi");
+        client.write_file_bytes("P/data.bin", b"hi").unwrap();
+        let requests = thread.join().unwrap();
+        assert_eq!(requests[1]["params"]["arguments"]["encoding"], "base64");
+        assert_eq!(requests[2]["params"]["arguments"]["encoding"], "base64");
+        assert_eq!(requests[2]["params"]["arguments"]["content"], "aGk=");
+    }
+
+    #[test]
+    fn older_codea_builds_choose_the_encoding_by_extension() {
+        let (port, thread) = server(vec![
+            json!({"result":{"tools":[{"name":"readFile","inputSchema":{"properties":{"path":{}}}}]}}),
+            json!({"result":{"content":[{"type":"text","text":"/wAB"}]}}),
+            json!({"result":{"content":[]}}),
+        ]);
+        let mut client = MCPClient::new("127.0.0.1", port, 5).unwrap();
+        client.initialized = true;
+        assert_eq!(client.read_file_bytes("P/rom.gb").unwrap(), [0xff, 0x00, 0x01]);
+        client.write_file_bytes("P/Main.lua", b"hi").unwrap();
+        let requests = thread.join().unwrap();
+        assert!(requests[1]["params"]["arguments"]["encoding"].is_null());
+        assert_eq!(requests[2]["params"]["arguments"]["content"], "hi");
     }
 
     #[test]

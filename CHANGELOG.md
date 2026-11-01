@@ -11,9 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `codea pull` writes binary files (images, sounds, ROMs) as the original bytes
   instead of the base64 text Codea sends them as.
-- `codea push` sends every non-text file as base64, decided by extension the
-  same way Codea does. A binary file that happened to be valid UTF-8 used to be
-  sent as text and was silently not written.
+- `codea push` sends binary files intact. A binary file that happened to be
+  valid UTF-8 used to be sent as text and was silently not written.
+
+### Changed
+
+- `pull` and `push` transfer every file as base64 when Codea supports it (the
+  `encoding` argument of the `readFile` and `writeFile` tools). With older Codea
+  builds they fall back to choosing text or base64 by extension, as Codea does.
 
 ## [0.3.0] - 2026-10-26
 

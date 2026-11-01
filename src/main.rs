@@ -21,7 +21,7 @@ use crate::config::{
 };
 use crate::discover::{DiscoverEvent, discover_devices_with_progress};
 use crate::local::create_local_project;
-use crate::mcp::{MCPClient, decode_file_content, encode_file_content};
+use crate::mcp::MCPClient;
 
 const SCREEN_SIZE_PRESETS: [(&str, &str); 5] = [
     ("match-display", "Match Display"),
@@ -1744,10 +1744,7 @@ fn pull_project_files(
             .next_back()
             .unwrap_or("file");
         let local_path = output_dir.join(filename);
-        match client
-            .read_file(&file_path)
-            .and_then(|content| decode_file_content(&file_path, content))
-        {
+        match client.read_file_bytes(&file_path) {
             Ok(bytes) => {
                 fs::write(&local_path, bytes)?;
                 println!("{}  {}", prefix, filename);
@@ -1765,8 +1762,7 @@ fn push_file(
     label: &str,
 ) -> Result<()> {
     let bytes = fs::read(local_path)?;
-    let content = encode_file_content(file_path, &bytes);
-    match client.write_file(file_path, &content) {
+    match client.write_file_bytes(file_path, &bytes) {
         Ok(_) => println!("  {}", label),
         Err(error) => eprintln!("  {} (error: {})", label, error),
     }
