@@ -16,7 +16,7 @@ pub struct MCPClient {
     initialized: bool,
     window_id: Option<String>,
     view_id: Option<String>,
-    supports_windows: Option<bool>,
+    tools: Option<Vec<Value>>,
 }
 
 impl MCPClient {
@@ -31,7 +31,7 @@ impl MCPClient {
             initialized: false,
             window_id: None,
             view_id: None,
-            supports_windows: None,
+            tools: None,
         })
     }
 
@@ -79,22 +79,36 @@ impl MCPClient {
         self.view_id = view_id;
     }
 
-    fn ensure_window_support(&mut self) -> Result<()> {
+    fn tools(&mut self) -> Result<&[Value]> {
         if !self.initialized {
             self.initialize()?;
         }
-        if self.supports_windows.is_none() {
+        if self.tools.is_none() {
             let id = self.next_id();
             let response = self.post_json(
                 &json!({"jsonrpc":"2.0", "id":id, "method":"tools/list", "params":{}}),
             )?;
-            self.supports_windows = Some(
+            self.tools = Some(
                 response["result"]["tools"]
                     .as_array()
-                    .is_some_and(|tools| tools.iter().any(|tool| tool["name"] == "listWindows")),
+                    .cloned()
+                    .unwrap_or_default(),
             );
         }
-        if self.supports_windows != Some(true) {
+        Ok(self.tools.as_deref().unwrap_or_default())
+    }
+
+    /// Codea 3.20 and later declare `encoding` on `readFile` and send and accept
+    /// any file as base64; older builds choose text or base64 by extension.
+    fn supports_file_encoding(&mut self) -> Result<bool> {
+        Ok(self.tools()?.iter().any(|tool| {
+            tool["name"] == "readFile" && !tool["inputSchema"]["properties"]["encoding"].is_null()
+        }))
+    }
+
+    fn ensure_window_support(&mut self) -> Result<()> {
+        let supports_windows = self.tools()?.iter().any(|tool| tool["name"] == "listWindows");
+        if !supports_windows {
             bail!(
                 "This Codea server does not support window targeting. Update Runner, or omit --window/--view for legacy single-window use."
             );
@@ -213,6 +227,31 @@ impl MCPClient {
     pub fn write_file(&mut self, file_path: &str, content: &str) -> Result<()> {
         let _ = self.call_tool("writeFile", json!({"path": file_path, "content": content}))?;
         Ok(())
+    }
+
+    pub fn read_file_bytes(&mut self, file_path: &str) -> Result<Vec<u8>> {
+        if self.supports_file_encoding()? {
+            let content = Self::text(
+                &self.call_tool("readFile", json!({"path": file_path, "encoding": "base64"}))?,
+            );
+            Ok(general_purpose::STANDARD.decode(content.trim())?)
+        } else {
+            let content = self.read_file(file_path)?;
+            decode_file_content(file_path, content)
+        }
+    }
+
+    pub fn write_file_bytes(&mut self, file_path: &str, bytes: &[u8]) -> Result<()> {
+        if self.supports_file_encoding()? {
+            let content = general_purpose::STANDARD.encode(bytes);
+            let _ = self.call_tool(
+                "writeFile",
+                json!({"path": file_path, "content": content, "encoding": "base64"}),
+            )?;
+            Ok(())
+        } else {
+            self.write_file(file_path, &encode_file_content(file_path, bytes))
+        }
     }
 
     pub fn run_project(&mut self, project_path: &str) -> Result<String> {
@@ -443,10 +482,34 @@ fn parse_string_array(value: &Value) -> Result<Vec<String>> {
         .collect()
 }
 
-pub fn maybe_base64_text(bytes: &[u8]) -> String {
-    match std::str::from_utf8(bytes) {
-        Ok(text) => text.to_string(),
-        Err(_) => general_purpose::STANDARD.encode(bytes),
+/// Codea sends files with these extensions as plain text and every other file
+/// as base64. Mirrors `AssetPack.textFileExtensions`; only Codea builds before
+/// 3.20, whose `readFile` has no `encoding` argument, need it.
+const TEXT_EXTENSIONS: &[&str] = &[
+    "txt", "lua", "json", "js", "php", "html", "css", "text", "xml", "csv", "tsv", "vs", "fs",
+    "frag", "vert", "notes", "yaml", "md", "markdown", "plist",
+];
+
+pub fn is_text_path(path: &str) -> bool {
+    std::path::Path::new(path)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| TEXT_EXTENSIONS.contains(&extension))
+}
+
+pub fn encode_file_content(path: &str, bytes: &[u8]) -> String {
+    if is_text_path(path) {
+        String::from_utf8_lossy(bytes).into_owned()
+    } else {
+        general_purpose::STANDARD.encode(bytes)
+    }
+}
+
+pub fn decode_file_content(path: &str, content: String) -> Result<Vec<u8>> {
+    if is_text_path(path) {
+        Ok(content.into_bytes())
+    } else {
+        Ok(general_purpose::STANDARD.decode(content.trim())?)
     }
 }
 
@@ -512,6 +575,43 @@ mod tests {
         }
     }
 
+    fn encoding_tools() -> Value {
+        json!({"result":{"tools":[{"name":"readFile","inputSchema":{"properties":{"path":{},"encoding":{}}}}]}})
+    }
+
+    #[test]
+    fn files_travel_as_base64_when_codea_declares_encoding() {
+        let (port, thread) = server(vec![
+            encoding_tools(),
+            json!({"result":{"content":[{"type":"text","text":"aGk="}]}}),
+            json!({"result":{"content":[]}}),
+        ]);
+        let mut client = MCPClient::new("127.0.0.1", port, 5).unwrap();
+        client.initialized = true;
+        assert_eq!(client.read_file_bytes("P/Main.lua").unwrap(), b"hi");
+        client.write_file_bytes("P/data.bin", b"hi").unwrap();
+        let requests = thread.join().unwrap();
+        assert_eq!(requests[1]["params"]["arguments"]["encoding"], "base64");
+        assert_eq!(requests[2]["params"]["arguments"]["encoding"], "base64");
+        assert_eq!(requests[2]["params"]["arguments"]["content"], "aGk=");
+    }
+
+    #[test]
+    fn older_codea_builds_choose_the_encoding_by_extension() {
+        let (port, thread) = server(vec![
+            json!({"result":{"tools":[{"name":"readFile","inputSchema":{"properties":{"path":{}}}}]}}),
+            json!({"result":{"content":[{"type":"text","text":"/wAB"}]}}),
+            json!({"result":{"content":[]}}),
+        ]);
+        let mut client = MCPClient::new("127.0.0.1", port, 5).unwrap();
+        client.initialized = true;
+        assert_eq!(client.read_file_bytes("P/rom.gb").unwrap(), [0xff, 0x00, 0x01]);
+        client.write_file_bytes("P/Main.lua", b"hi").unwrap();
+        let requests = thread.join().unwrap();
+        assert!(requests[1]["params"]["arguments"]["encoding"].is_null());
+        assert_eq!(requests[2]["params"]["arguments"]["content"], "hi");
+    }
+
     #[test]
     fn old_servers_reject_explicit_target_without_running_command() {
         let (port, thread) = server(vec![json!({"result":{"tools":[]}})]);
@@ -537,15 +637,22 @@ mod tests {
         assert_eq!(requests[0]["method"], "tools/call");
         assert_eq!(requests[0]["params"]["arguments"], json!({}));
     }
-    use super::maybe_base64_text;
+    use super::{decode_file_content, encode_file_content};
 
     #[test]
-    fn maybe_base64_text_keeps_utf8() {
-        assert_eq!(maybe_base64_text("hello".as_bytes()), "hello");
+    fn text_files_travel_as_text() {
+        assert_eq!(encode_file_content("P/Main.lua", b"hello"), "hello");
+        assert_eq!(decode_file_content("P/Main.lua", "hello".into()).unwrap(), b"hello");
     }
 
     #[test]
-    fn maybe_base64_text_encodes_binary() {
-        assert_eq!(maybe_base64_text(&[0xff, 0x00, 0x01]), "/wAB");
+    fn binary_files_travel_as_base64() {
+        assert_eq!(encode_file_content("P/rom.gb", &[0xff, 0x00, 0x01]), "/wAB");
+        assert_eq!(decode_file_content("P/rom.gb", "/wAB".into()).unwrap(), [0xff, 0x00, 0x01]);
+    }
+
+    #[test]
+    fn binary_files_that_are_valid_utf8_still_travel_as_base64() {
+        assert_eq!(encode_file_content("P/data.bin", b"hi"), "aGk=");
     }
 }
