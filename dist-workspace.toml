@@ -19,3 +19,7 @@ hosting = "github"
 publish-jobs = ["homebrew"]
 tap = "twolivesleft/homebrew-tap"
 formula = "codea"
+
+# GitHub retires the macos-14 image dist picks for Apple Silicon on November 2, 2026
+[dist.github-custom-runners]
+aarch64-apple-darwin = "macos-15"
