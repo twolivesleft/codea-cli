@@ -98,8 +98,8 @@ impl MCPClient {
         Ok(self.tools.as_deref().unwrap_or_default())
     }
 
-    /// Codea builds that declare `encoding` on `readFile` send and accept any
-    /// file as base64; older ones choose text or base64 by extension.
+    /// Codea 3.20 and later declare `encoding` on `readFile` and send and accept
+    /// any file as base64; older builds choose text or base64 by extension.
     fn supports_file_encoding(&mut self) -> Result<bool> {
         Ok(self.tools()?.iter().any(|tool| {
             tool["name"] == "readFile" && !tool["inputSchema"]["properties"]["encoding"].is_null()
@@ -483,7 +483,8 @@ fn parse_string_array(value: &Value) -> Result<Vec<String>> {
 }
 
 /// Codea sends files with these extensions as plain text and every other file
-/// as base64, in both directions. Mirrors `AssetPack.textFileExtensions` in the app.
+/// as base64. Mirrors `AssetPack.textFileExtensions`; only Codea builds before
+/// 3.20, whose `readFile` has no `encoding` argument, need it.
 const TEXT_EXTENSIONS: &[&str] = &[
     "txt", "lua", "json", "js", "php", "html", "css", "text", "xml", "csv", "tsv", "vs", "fs",
     "frag", "vert", "notes", "yaml", "md", "markdown", "plist",
