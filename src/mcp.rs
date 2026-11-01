@@ -443,10 +443,33 @@ fn parse_string_array(value: &Value) -> Result<Vec<String>> {
         .collect()
 }
 
-pub fn maybe_base64_text(bytes: &[u8]) -> String {
-    match std::str::from_utf8(bytes) {
-        Ok(text) => text.to_string(),
-        Err(_) => general_purpose::STANDARD.encode(bytes),
+/// Codea sends files with these extensions as plain text and every other file
+/// as base64, in both directions. Mirrors `AssetPack.textFileExtensions` in the app.
+const TEXT_EXTENSIONS: &[&str] = &[
+    "txt", "lua", "json", "js", "php", "html", "css", "text", "xml", "csv", "tsv", "vs", "fs",
+    "frag", "vert", "notes", "yaml", "md", "markdown", "plist",
+];
+
+pub fn is_text_path(path: &str) -> bool {
+    std::path::Path::new(path)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| TEXT_EXTENSIONS.contains(&extension))
+}
+
+pub fn encode_file_content(path: &str, bytes: &[u8]) -> String {
+    if is_text_path(path) {
+        String::from_utf8_lossy(bytes).into_owned()
+    } else {
+        general_purpose::STANDARD.encode(bytes)
+    }
+}
+
+pub fn decode_file_content(path: &str, content: String) -> Result<Vec<u8>> {
+    if is_text_path(path) {
+        Ok(content.into_bytes())
+    } else {
+        Ok(general_purpose::STANDARD.decode(content.trim())?)
     }
 }
 
@@ -537,15 +560,22 @@ mod tests {
         assert_eq!(requests[0]["method"], "tools/call");
         assert_eq!(requests[0]["params"]["arguments"], json!({}));
     }
-    use super::maybe_base64_text;
+    use super::{decode_file_content, encode_file_content};
 
     #[test]
-    fn maybe_base64_text_keeps_utf8() {
-        assert_eq!(maybe_base64_text("hello".as_bytes()), "hello");
+    fn text_files_travel_as_text() {
+        assert_eq!(encode_file_content("P/Main.lua", b"hello"), "hello");
+        assert_eq!(decode_file_content("P/Main.lua", "hello".into()).unwrap(), b"hello");
     }
 
     #[test]
-    fn maybe_base64_text_encodes_binary() {
-        assert_eq!(maybe_base64_text(&[0xff, 0x00, 0x01]), "/wAB");
+    fn binary_files_travel_as_base64() {
+        assert_eq!(encode_file_content("P/rom.gb", &[0xff, 0x00, 0x01]), "/wAB");
+        assert_eq!(decode_file_content("P/rom.gb", "/wAB".into()).unwrap(), [0xff, 0x00, 0x01]);
+    }
+
+    #[test]
+    fn binary_files_that_are_valid_utf8_still_travel_as_base64() {
+        assert_eq!(encode_file_content("P/data.bin", b"hi"), "aGk=");
     }
 }
