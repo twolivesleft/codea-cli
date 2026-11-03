@@ -1703,6 +1703,26 @@ fn resolve_doc_runtime_filter(
     Ok(Some("modern".to_string()))
 }
 
+/// A file's path within its project, from a path as listFiles gives it: "Collection/Project/…",
+/// or "iCloud/Collection/Project/…". Files in folders inside the project keep their folders.
+fn path_in_project(file_path: &str) -> Option<String> {
+    let parts: Vec<&str> = file_path.trim_end_matches('/').split('/').collect();
+    let skip = if parts.first() == Some(&"iCloud") {
+        3
+    } else {
+        2
+    };
+    let inside = parts.get(skip..)?;
+    if inside.is_empty()
+        || inside
+            .iter()
+            .any(|part| part.is_empty() || *part == "." || *part == "..")
+    {
+        return None;
+    }
+    Some(inside.join("/"))
+}
+
 fn pull_project_files(
     client: &mut MCPClient,
     project_path: &str,
@@ -1733,23 +1753,31 @@ fn pull_project_files(
                 .next_back()
                 .unwrap_or("")
                 .to_ascii_lowercase();
-            wanted.contains(&filename)
+            let inside = path_in_project(path)
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            wanted.contains(&filename) || wanted.contains(&inside)
         });
     }
 
     for file_path in all_files {
-        let filename = file_path
-            .trim_end_matches('/')
-            .split('/')
-            .next_back()
-            .unwrap_or("file");
-        let local_path = output_dir.join(filename);
+        let Some(name) = path_in_project(&file_path) else {
+            eprintln!(
+                "{}  {} (skipped: not a file of the project)",
+                prefix, file_path
+            );
+            continue;
+        };
+        let local_path = output_dir.join(&name);
+        if let Some(parent) = local_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
         match client.read_file_bytes(&file_path) {
             Ok(bytes) => {
                 fs::write(&local_path, bytes)?;
-                println!("{}  {}", prefix, filename);
+                println!("{}  {}", prefix, name);
             }
-            Err(error) => eprintln!("{}  {} (error: {})", prefix, filename, error),
+            Err(error) => eprintln!("{}  {} (error: {})", prefix, name, error),
         }
     }
     Ok(())
@@ -1963,8 +1991,26 @@ mod tests {
     }
     use super::{
         completion_kind_name, describe_screen_size, parse_collection_project, parse_screen_size,
-        resolve_runtime_filter,
+        path_in_project, resolve_runtime_filter,
     };
+
+    #[test]
+    fn files_keep_their_folder_within_the_project() {
+        assert_eq!(
+            path_in_project("Documents/Game/Main.lua"),
+            Some("Main.lua".into())
+        );
+        assert_eq!(
+            path_in_project("Documents/Game/ui/Button.lua"),
+            Some("ui/Button.lua".into())
+        );
+        assert_eq!(
+            path_in_project("iCloud/Shared/Game/ui/Button.lua"),
+            Some("ui/Button.lua".into())
+        );
+        assert_eq!(path_in_project("Documents/Game/../Escape.lua"), None);
+        assert_eq!(path_in_project("Documents/Game"), None);
+    }
 
     #[test]
     fn parse_collection_project_supports_icloud_prefix() {

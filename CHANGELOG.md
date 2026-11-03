@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `codea pull` keeps the folders inside a project: a file in one lands at its
+  path within the project instead of at the top.
+
 ## [0.3.1] - 2026-11-01
 
 ### Fixed
